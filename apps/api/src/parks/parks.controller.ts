@@ -1,6 +1,7 @@
-import { Body, Controller, Get, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
-import { IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, Length, MaxLength, MinLength } from 'class-validator';
+import { IsInt, IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, Length, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../auth/auth.decorators';
 import { Public } from '../auth/public.decorator';
 import { AuthUser } from '../auth/auth.types';
@@ -52,6 +53,48 @@ class ReverseGeocodeDto {
   @IsLongitude() longitude!: number;
 }
 
+class ParkAdminQueryDto {
+  @ApiPropertyOptional({ example: 1, minimum: 1, default: 1 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) page?: number;
+  @ApiPropertyOptional({ example: 20, minimum: 1, maximum: 100, default: 20 })
+  @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) pageSize?: number;
+  @ApiPropertyOptional({ example: 'EU', description: 'Partial match' })
+  @IsOptional() @IsString() @MaxLength(4) continentCode?: string;
+  @ApiPropertyOptional({ example: 'ES', description: 'Partial match' })
+  @IsOptional() @IsString() @MaxLength(2) countryIso2?: string;
+  @ApiPropertyOptional({ example: 'Andalucía', description: 'Partial match' })
+  @IsOptional() @IsString() @MaxLength(160) region?: string;
+  @ApiPropertyOptional({ example: 'Madrid', description: 'Partial municipality/locality match' })
+  @IsOptional() @IsString() @MaxLength(160) locality?: string;
+}
+
+class ParkUpdateDto {
+  @ApiPropertyOptional({ example: 'ES', readOnly: true })
+  @IsOptional() @IsString() @Length(2, 2) countryIso2?: string;
+  @ApiPropertyOptional({ example: 'EU', readOnly: true })
+  @IsOptional() @IsString() @Length(2, 4) continentCode?: string;
+  @ApiPropertyOptional({ example: 'Comunidad de Madrid' })
+  @IsOptional() @IsString() @MaxLength(160) region?: string;
+  @ApiPropertyOptional({ example: 'Madrid' })
+  @IsOptional() @IsString() @MaxLength(160) locality?: string;
+  @ApiPropertyOptional({ example: 40.4168, minimum: -90, maximum: 90 })
+  @IsOptional() @IsLatitude() latitude?: number;
+  @ApiPropertyOptional({ example: -3.7038, minimum: -180, maximum: 180 })
+  @IsOptional() @IsLongitude() longitude?: number;
+  @ApiPropertyOptional({ example: 'MUNICIPAL_PARK' })
+  @IsOptional() @IsString() @MaxLength(64) parkType?: string;
+  @ApiPropertyOptional({ example: 'Parque Municipal del Retiro', minLength: 2, maxLength: 240 })
+  @IsOptional() @IsString() @MinLength(2) @MaxLength(240) name?: string;
+  @ApiPropertyOptional({ example: 'A centrally located municipal park.' })
+  @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ example: 'https://madrid.es/parques/retiro', format: 'uri' })
+  @IsOptional() @IsUrl() sourceUrl?: string;
+  @ApiPropertyOptional({ example: 'Public access during opening hours.' })
+  @IsOptional() @IsString() accessNotes?: string;
+  @ApiPropertyOptional({ example: 'https://example.org/photos/retiro.jpg', format: 'uri' })
+  @IsOptional() @IsUrl() photoUrl?: string;
+}
+
 @ApiTags('parks')
 @Controller()
 export class ParksController {
@@ -81,6 +124,24 @@ export class ParksController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Resolve country, continent, region, and locality from proposal coordinates' })
   reverseGeocode(@Body() dto: ReverseGeocodeDto) { return this.parks.reverseGeocode(dto); }
+
+  @Get('admin/parks')
+  @Roles('ENTITY_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Search and paginate parks within the administrator approval scope' })
+  adminList(@CurrentUser() user: AuthUser, @Query() query: ParkAdminQueryDto) { return this.parks.adminList(user, query); }
+
+  @Get('admin/parks/:id')
+  @Roles('ENTITY_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get one park for administration' })
+  adminFind(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.parks.adminFind(user, id); }
+
+  @Patch('admin/parks/:id')
+  @Roles('ENTITY_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update a park, including its map location, within the administrator scope' })
+  adminUpdate(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: ParkUpdateDto) { return this.parks.update(user, id, dto); }
 
   @Get('proposals/mine')
   @ApiBearerAuth()

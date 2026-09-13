@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { approvalScopes, auditEvents, countrySequences, moderationDecisions, parkProposals, parks } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
@@ -33,6 +33,8 @@ for (const [continent, countries] of Object.entries({
 }
 
 export type ReverseGeocodeInput = { latitude: number; longitude: number };
+export type ParkAdminQuery = { page?: number; pageSize?: number; continentCode?: string; countryIso2?: string; region?: string; locality?: string };
+export type ParkUpdateInput = { countryIso2?: string; continentCode?: string; region?: string | null; locality?: string | null; latitude?: number; longitude?: number; parkType?: string; name?: string; description?: string | null; sourceUrl?: string | null; accessNotes?: string | null; photoUrl?: string | null };
 
 @Injectable()
 export class ParksService {
@@ -46,6 +48,59 @@ export class ParksService {
       name: parks.name, description: parks.description, sourceUrl: parks.sourceUrl,
       accessNotes: parks.accessNotes, photoUrl: parks.photoUrl
     }).from(parks).where(eq(parks.status, 'APPROVED')).orderBy(parks.reference).limit(2000);
+  }
+
+  async adminList(user: AuthUser, query: ParkAdminQuery) {
+    const page = Math.max(1, Math.floor(query.page ?? 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(query.pageSize ?? 20)));
+    const filters = [];
+    if (query.continentCode?.trim()) filters.push(ilike(parks.continentCode, `%${query.continentCode.trim()}%`));
+    if (query.countryIso2?.trim()) filters.push(ilike(parks.countryIso2, `%${query.countryIso2.trim()}%`));
+    if (query.region?.trim()) filters.push(ilike(parks.region, `%${query.region.trim()}%`));
+    if (query.locality?.trim()) filters.push(ilike(parks.locality, `%${query.locality.trim()}%`));
+
+    if (user.role !== 'GLOBAL_ADMIN' && user.role !== 'SYSTEM_BOOTSTRAP_ADMIN') {
+      const [scope] = await this.db.db.select().from(approvalScopes).where(eq(approvalScopes.userId, user.id));
+      if (!scope) return { items: [], page, pageSize, total: 0, totalPages: 0 };
+      if (!scope.allCountries) {
+        const scopeFilters = [];
+        if (scope.countryCodes.length) scopeFilters.push(inArray(parks.countryIso2, scope.countryCodes));
+        if (scope.continentCodes.length) scopeFilters.push(inArray(parks.continentCode, scope.continentCodes));
+        if (!scopeFilters.length) return { items: [], page, pageSize, total: 0, totalPages: 0 };
+        filters.push(or(...scopeFilters)!);
+      }
+    }
+
+    const where = filters.length ? and(...filters) : undefined;
+    const [{ total }] = await this.db.db.select({ total: count() }).from(parks).where(where);
+    const items = await this.db.db.select().from(parks).where(where).orderBy(parks.reference).limit(pageSize).offset((page - 1) * pageSize);
+    const totalCount = Number(total);
+    return { items, page, pageSize, total: totalCount, totalPages: Math.ceil(totalCount / pageSize) };
+  }
+
+  async adminFind(user: AuthUser, id: string) {
+    const [park] = await this.db.db.select().from(parks).where(eq(parks.id, id));
+    if (!park) throw new NotFoundException('Park not found');
+    await this.assertScope(user, park.countryIso2, park.continentCode);
+    return park;
+  }
+
+  async update(user: AuthUser, id: string, input: ParkUpdateInput) {
+    const existing = await this.adminFind(user, id);
+    const countryIso2 = input.countryIso2?.trim().toUpperCase();
+    const continentCode = input.continentCode?.trim().toUpperCase();
+    if (countryIso2 && countryIso2 !== existing.countryIso2) throw new BadRequestException('Country code cannot be changed because it is part of the park reference');
+    if (continentCode && continentCode !== existing.continentCode) throw new BadRequestException('Continent code cannot be changed independently of the park reference');
+    const latitude = input.latitude ?? Number(existing.latitude);
+    const longitude = input.longitude ?? Number(existing.longitude);
+    if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) throw new BadRequestException('Coordinates are out of range');
+    const [updated] = await this.db.db.update(parks).set({
+      region: input.region === undefined ? undefined : input.region || null, locality: input.locality === undefined ? undefined : input.locality || null, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6),
+      geom: { x: longitude, y: latitude }, parkType: input.parkType, name: input.name?.trim(), description: input.description === undefined ? undefined : input.description || null,
+      sourceUrl: input.sourceUrl === undefined ? undefined : input.sourceUrl || null, accessNotes: input.accessNotes === undefined ? undefined : input.accessNotes || null, photoUrl: input.photoUrl === undefined ? undefined : input.photoUrl || null, updatedAt: new Date()
+    }).where(eq(parks.id, id)).returning();
+    await this.db.db.insert(auditEvents).values({ actorId: user.id, action: 'ENTITY_UPDATED', entityType: 'park', entityId: id, beforeJson: { reference: existing.reference, latitude: existing.latitude, longitude: existing.longitude, name: existing.name }, afterJson: { reference: updated.reference, latitude: updated.latitude, longitude: updated.longitude, name: updated.name } });
+    return updated;
   }
 
   async findApproved(reference: string) {
