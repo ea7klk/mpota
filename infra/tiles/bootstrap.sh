@@ -36,12 +36,37 @@ if [ -z "${tile_url}" ]; then
 fi
 
 tmp="${target}.part"
-trap 'rm -f "${tmp}"' EXIT INT TERM
+progress_pipe="${tmp}.progress"
+trap 'rm -f "${tmp}" "${progress_pipe}"' EXIT INT TERM
+
+rm -f "${progress_pipe}"
+mkfifo "${progress_pipe}"
 
 echo "Downloading MPOTA tile set from ${tile_url}"
-curl --fail --location --show-error --silent \
+curl --fail --location --show-error --progress-bar \
   --retry 5 --retry-delay 5 --connect-timeout 20 \
-  --output "${tmp}" "${tile_url}"
+  --output "${tmp}" "${tile_url}" 2>"${progress_pipe}" &
+curl_pid=$!
+next_percent=5
+
+tr '\r' '\n' < "${progress_pipe}" | while IFS= read -r progress_line; do
+  percent=$(printf '%s\n' "${progress_line}" | sed -n 's/.* \([0-9][0-9]*\)\.[0-9][0-9]*%.*/\1/p')
+  if [ -n "${percent}" ]; then
+    while [ "${percent}" -ge "${next_percent}" ] && [ "${next_percent}" -le 100 ]; do
+      echo "Tile set download progress: ${next_percent}%"
+      next_percent=$((next_percent + 5))
+    done
+  elif [ -n "${progress_line}" ]; then
+    echo "Tile set download: ${progress_line}"
+  fi
+done
+
+curl_status=0
+wait "${curl_pid}" || curl_status=$?
+if [ "${curl_status}" -ne 0 ]; then
+  echo "Tile set download failed with exit code ${curl_status}" >&2
+  exit "${curl_status}"
+fi
 test -s "${tmp}"
 
 if [ -n "${tile_sha256}" ]; then

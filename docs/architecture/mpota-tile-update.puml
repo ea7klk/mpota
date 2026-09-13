@@ -28,7 +28,7 @@ force refresh is false?) then (yes)
 else (no)
   if (Tile source URL configured?) then (yes)
     :Download to a temporary .part file
-with retries;
+with retries and 5% progress logs;
     if (Optional SHA-256 valid?) then (yes)
       :Atomically move .part file
 into the named volume or PVC;

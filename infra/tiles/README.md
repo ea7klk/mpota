@@ -1,6 +1,6 @@
 # Self-hosted map tiles
 
-The Compose stack exposes TileServer GL at `http://localhost:8080` and stores the tile set in the named volume `mpota-tile-data`. The one-shot `tile-bootstrap` service installs `curl`, downloads the configured MBTiles artifact, verifies an optional SHA-256 checksum, and atomically places it in the volume before TileServer GL starts.
+The Compose stack exposes TileServer GL at `http://localhost:8080` and stores the tile set in the named volume `mpota-tile-data`. The one-shot `tile-bootstrap` service installs `curl`, downloads the configured MBTiles artifact with 5% progress logging, verifies an optional SHA-256 checksum, and atomically places it in the volume before TileServer GL starts.
 
 The repository configuration is pinned to the current completed OpenFreeMap worldwide planet extract (`20260906_080001_pt`) and its published SHA-256 checksum. Set or override these values in a local `.env` file:
 
