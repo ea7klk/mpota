@@ -20,6 +20,8 @@ type Award = { id: string; key: string; name: string; description?: string; type
 type Duplicate = { kind: 'APPROVED_PARK' | 'PENDING_PROPOSAL'; id: string; reference?: string; name: string; distance_meters: number };
 type ParkAdminPage = { items: Park[]; page: number; pageSize: number; total: number; totalPages: number };
 type ParkSearch = { continentCode: string; countryIso2: string; region: string; locality: string };
+type UploadRecord = { id: string; originalFilename: string; source: string; status: string; sizeBytes: number; contactCount: number; validCount: number; errorCount: number; uploadedAt: string; processedAt?: string | null; parkReference?: string | null; parkName?: string | null };
+type RejectedQso = { id: string; qsoCallsign: string; qsoDatetime?: string | null; qsoDateUtc?: string | null; band?: string | null; mode?: string | null; validity: string; errorMessage?: string | null };
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 const TILE_URL = import.meta.env.VITE_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -329,6 +331,9 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [parks, setParks] = useState<Park[]>([]);
   const [awards, setAwards] = useState<Award[]>([]);
+  const [uploads, setUploads] = useState<UploadRecord[]>([]);
+  const [rejectedQsos, setRejectedQsos] = useState<RejectedQso[]>([]);
+  const [selectedUploadId, setSelectedUploadId] = useState<string | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [tab, setTab] = useState('map');
@@ -352,6 +357,13 @@ export default function App() {
   const loadUsers = () => { if (token) request<AdminUser[]>('/admin/users', {}, token).then(setAdminUsers).catch((error) => setMessage(error.message)); };
   useEffect(refresh, [token]);
   useEffect(() => { localStorage.setItem('mpota-locale', locale); }, [locale]);
+  useEffect(() => {
+    if (tab !== 'uploads' || !token) return;
+    const refreshUploads = () => request<UploadRecord[]>('/uploads', {}, token).then(setUploads).catch((error) => setMessage(error.message));
+    refreshUploads();
+    const timer = window.setInterval(refreshUploads, 3000);
+    return () => window.clearInterval(timer);
+  }, [tab, token]);
   useEffect(() => {
     const handleHistory = () => setParkReference(parkReferenceFromLocation());
     window.addEventListener('popstate', handleHistory);
@@ -398,10 +410,45 @@ export default function App() {
     } catch (error) { setMessage((error as Error).message); }
   };
   const submitAward = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); const value = Object.fromEntries(form); try { await request('/awards', { method: 'POST', body: JSON.stringify({ ...value, type: 'ACTIVATOR', allCountries: true, ruleDefinition: { minimumEntities: Number(value.minimumEntities || 1) } }) }, token); setMessage('Award draft created.'); refresh(); } catch (error) { setMessage((error as Error).message); } };
-  const uploadAdif = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const input = event.currentTarget.elements.namedItem('file') as HTMLInputElement; if (!input.files?.[0]) return; const body = new FormData(); body.append('file', input.files[0]); try { await request('/uploads/adif', { method: 'POST', body }, token); setMessage('ADIF uploaded and processed.'); } catch (error) { setMessage((error as Error).message); } };
+  const uploadAdif = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const park = String(form.get('parkReference') || '');
+    const input = event.currentTarget.elements.namedItem('file') as HTMLInputElement;
+    if (!park) return setMessage('Select the approved park for this ADIF file.');
+    if (!input.files?.[0]) return;
+    const body = new FormData();
+    body.append('file', input.files[0]);
+    try {
+      await request(`/parks/${encodeURIComponent(park)}/uploads/adif`, { method: 'POST', body }, token);
+      event.currentTarget.reset();
+      setMessage('ADIF uploaded and queued for processing.');
+    } catch (error) { setMessage((error as Error).message); }
+  };
+  const submitManualQso = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const park = String(form.get('parkReference') || '');
+    const localDateTime = String(form.get('qsoDatetime') || '');
+    try {
+      const result = await request<{ accepted: boolean; errorMessage?: string }> (`/parks/${encodeURIComponent(park)}/qsos`, {
+        method: 'POST',
+        body: JSON.stringify({ qsoCallsign: String(form.get('qsoCallsign') || ''), qsoDatetime: new Date(localDateTime).toISOString(), band: String(form.get('band') || '') || undefined, mode: String(form.get('mode') || '') || undefined })
+      }, token);
+      setMessage(result.accepted ? 'QSO accepted.' : `QSO rejected: ${result.errorMessage || 'validation failed'}`);
+      event.currentTarget.reset();
+    } catch (error) { setMessage((error as Error).message); }
+  };
+  const showRejectedQsos = async (upload: UploadRecord) => {
+    if (!upload.errorCount) return;
+    try {
+      setRejectedQsos(await request<RejectedQso[]>(`/uploads/${upload.id}/rejected-qsos`, {}, token));
+      setSelectedUploadId(upload.id);
+    } catch (error) { setMessage((error as Error).message); }
+  };
 
   const nav = useMemo(() => [{ id: 'map', label: t.map }, { id: 'propose', label: t.propose }, { id: 'uploads', label: t.uploads }, { id: 'awards', label: t.awards }, ...(canModerate ? [{ id: 'admin', label: t.admin }, { id: 'park-admin', label: t.parkAdmin }] : []), ...(canManageUsers ? [{ id: 'users', label: t.users }] : [])], [t, canModerate, canManageUsers]);
-  const selectTab = (id: string) => { setTab(id); if (id === 'admin') loadQueue(); if (id === 'users') loadUsers(); };
+  const selectTab = (id: string) => { setTab(id); if (id === 'admin') loadQueue(); if (id === 'users') loadUsers(); if (id !== 'uploads') { setSelectedUploadId(null); setRejectedQsos([]); } };
   const openPark = (park: Park) => { window.history.pushState({}, '', `/parks/${encodeURIComponent(park.reference)}`); setParkReference(park.reference); };
   const closePark = () => { window.history.pushState({}, '', '/'); setParkReference(null); };
   const parkEditId = new URLSearchParams(window.location.search).get('park');
@@ -413,7 +460,12 @@ export default function App() {
     <main><section className="hero"><div className="hero-copy"><p className="eyebrow">Municipal Parks on the Air</p><h1>{t.hero}</h1><p className="hero-text">{t.heroText}</p><div className="hero-actions"><button className="button" onClick={() => setTab('propose')}>{t.propose}</button><span className="stat"><strong>{parks.length}</strong> {t.approved}</span></div></div><div className="hero-card"><div className="signal">◎</div><div><strong>MPES-00001</strong><span>Ready for the community</span></div></div></section>
       {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
       {(tab === 'map' || tab === 'propose') && <section className="content-grid"><div className="panel map-panel"><div className="panel-heading"><div>{tab === 'map' ? <><p className="eyebrow">Live catalog</p><h2>{t.map}</h2></> : <><p className="eyebrow">Location first</p><h2>{t.choose}</h2><p className="map-hint">{t.pickLocation}</p></>}</div><span className="badge">{tab === 'map' ? `${parks.length} entities` : `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`}</span></div><MapView parks={parks} picking={tab === 'propose'} selectedPoint={tab === 'propose' ? point : undefined} view={mapView} onViewChange={setMapView} onParkSelect={openPark} onVisibleParksChange={setVisibleParks} onPick={tab === 'propose' ? handleMapPick : () => undefined} /></div>{tab === 'map' ? <aside className="panel side-panel"><p className="eyebrow">Approved references</p><h2>Explore MPOTA</h2><p className="muted">Only approved municipal parks appear on the public map.</p><div className="park-list approved-reference-list">{visibleParks.map((park) => <button className="park-row" key={park.id} onClick={() => openPark(park)}><span className="reference">{park.reference}</span><span>{park.name}</span><small>{park.countryIso2} · {park.locality || park.region || 'Municipal park'}</small></button>)}</div></aside> : <aside className="panel form-panel"><p className="eyebrow">Community contribution</p><h2>{t.propose}</h2>{token ? <form onSubmit={submitProposal}><div className="coordinate-grid"><label>Latitude<input value={point.latitude.toFixed(6)} readOnly /></label><label>Longitude<input value={point.longitude.toFixed(6)} readOnly /></label></div><label>Country<input value={locationFields.countryName} placeholder="Select a point on the map" readOnly /></label><label>Country code<input name="countryIso2" required minLength={2} maxLength={2} placeholder="ES" value={locationFields.countryIso2} onChange={(event) => updateLocationField('countryIso2', event.target.value.toUpperCase())} /></label><label>Continent code<input name="continentCode" required placeholder="EU" value={locationFields.continentCode} onChange={(event) => updateLocationField('continentCode', event.target.value.toUpperCase())} /></label><label>Region<input name="region" value={locationFields.region} onChange={(event) => updateLocationField('region', event.target.value)} /></label><label>Locality<input name="locality" value={locationFields.locality} onChange={(event) => updateLocationField('locality', event.target.value)} /></label>{isResolvingLocation && <p className="map-hint">Looking up the selected location…</p>}<label>Park name<input name="name" required placeholder="Municipal park name" /></label><label>Type<select name="parkType"><option value="MUNICIPAL_PARK">Municipal park</option><option value="URBAN_FOREST">Urban forest</option><option value="BOTANICAL_GARDEN">Botanical garden</option></select></label><label>Description<textarea name="description" rows={3} /></label><label>Source URL <span className="optional">(optional)</span><input name="sourceUrl" type="url" placeholder="https://..." /></label><label>Access notes<textarea name="accessNotes" rows={3} /></label><button className="button full" type="submit">{t.submit}</button></form> : <div className="login-callout"><p>{t.loginRequired}</p><button className="button" onClick={() => setAuthMode('login')}>{t.signIn}</button></div>}</aside>}</section>}
-      {tab === 'uploads' && <section className="single-panel panel"><p className="eyebrow">Activator tools</p><h2>{t.uploads}</h2>{token ? <form className="upload-box" onSubmit={uploadAdif}><div className="upload-icon">↥</div><h3>Upload an ADIF log</h3><p className="muted">The upload is stored privately, checked, parsed, and validated against approved MPOTA references.</p><input name="file" type="file" accept=".adi,.adif" required /><button className="button" type="submit">{t.upload}</button></form> : <div className="login-callout"><p>{t.loginRequired}</p><button className="button" onClick={() => setAuthMode('login')}>{t.signIn}</button></div>}</section>}
+      {tab === 'uploads' && <section className="single-panel panel"><p className="eyebrow">Activator tools</p><h2>{t.uploads}</h2>{token ? <div className="log-tools-grid">
+        <form className="upload-box" onSubmit={uploadAdif}><div className="upload-icon">↥</div><h3>Upload an ADIF log</h3><p className="muted">Choose the approved MPOTA park where this activity took place. Processing runs through the same QSO validation API used by manual entries.</p><label>Park<select name="parkReference" required defaultValue=""><option value="" disabled>Select an approved park</option>{parks.map((park) => <option value={park.reference} key={park.id}>{park.reference} · {park.name}</option>)}</select></label><input name="file" type="file" accept=".adi,.adif" required /><button className="button" type="submit">{t.upload}</button></form>
+        <form className="manual-qso-form" onSubmit={submitManualQso}><p className="eyebrow">Single contact</p><h3>Add a QSO manually</h3><p className="muted">Dates are normalized to UTC. A hunter callsign can count once per activator, park, and UTC day.</p><label>Park<select name="parkReference" required defaultValue=""><option value="" disabled>Select an approved park</option>{parks.map((park) => <option value={park.reference} key={park.id}>{park.reference} · {park.name}</option>)}</select></label><label>Hunter callsign<input name="qsoCallsign" required minLength={3} maxLength={32} placeholder="EA7KPG" /></label><div className="coordinate-grid"><label>Date and time<input name="qsoDatetime" type="datetime-local" required /></label><label>Band <span className="optional">(optional)</span><input name="band" placeholder="20m" /></label></div><label>Mode <span className="optional">(optional)</span><input name="mode" placeholder="SSB" /></label><button className="button" type="submit">Add QSO</button></form>
+        <div className="upload-history"><div className="section-heading"><div><p className="eyebrow">Processing history</p><h3>Your ADIF uploads</h3></div><span className="badge">{uploads.length}</span></div>{uploads.length ? <div className="upload-list">{uploads.map((upload) => <button className={`upload-row ${upload.errorCount ? 'has-errors' : ''}`} type="button" key={upload.id} onClick={() => showRejectedQsos(upload)} disabled={!upload.errorCount}><span className="upload-file"><strong>{upload.originalFilename}</strong><small>{upload.parkReference || 'Park unavailable'} · {upload.parkName || ''}</small></span><span className={`upload-status upload-status-${upload.status.toLowerCase()}`}>{upload.status}</span><span className="upload-meta"><small>{new Date(upload.uploadedAt).toLocaleString()}</small><small>{(upload.sizeBytes / 1024).toFixed(1)} KB</small><small>{upload.validCount} valid · {upload.errorCount} invalid</small></span></button>)}</div> : <p className="muted">No ADIF files uploaded yet.</p>}</div>
+        {selectedUploadId && <div className="rejected-qso-panel"><div className="section-heading"><div><p className="eyebrow">Validation details</p><h3>Rejected QSOs</h3></div><button className="button ghost" type="button" onClick={() => { setSelectedUploadId(null); setRejectedQsos([]); }}>Close</button></div>{rejectedQsos.length ? <div className="activation-table-wrap"><table className="activation-table"><thead><tr><th>Hunter</th><th>UTC</th><th>Band</th><th>Mode</th><th>Reason</th></tr></thead><tbody>{rejectedQsos.map((qso) => <tr key={qso.id}><td className="callsign-cell">{qso.qsoCallsign}</td><td>{qso.qsoDatetime ? new Date(qso.qsoDatetime).toISOString() : qso.qsoDateUtc || '—'}</td><td>{qso.band || '—'}</td><td>{qso.mode || '—'}</td><td><strong>{qso.validity}</strong><br /><small>{qso.errorMessage || 'Rejected'}</small></td></tr>)}</tbody></table></div> : <p className="muted">No rejected QSOs were returned.</p>}</div>}
+      </div> : <div className="login-callout"><p>{t.loginRequired}</p><button className="button" onClick={() => setAuthMode('login')}>{t.signIn}</button></div>}</section>}
       {tab === 'awards' && <section className="content-grid"><div className="panel"><p className="eyebrow">Collect and qualify</p><h2>{t.awards}</h2><div className="award-grid">{awards.length ? awards.map((award) => <article className="award-card" key={award.id}><div className="award-icon">✦</div><div><span className="badge">{award.type}</span><h3>{award.name}</h3><p className="muted">{award.description || 'A published MPOTA award.'}</p></div></article>) : <p className="muted">No published awards yet.</p>}</div></div>{canAward && <aside className="panel form-panel"><p className="eyebrow">Award Admin</p><h2>{t.saveAward}</h2><form onSubmit={submitAward}><label>Key<input name="key" required placeholder="municipal-starter" /></label><label>Name<input name="name" required placeholder="Municipal Starter" /></label><label>Description<textarea name="description" rows={3} /></label><label>Minimum entities<input name="minimumEntities" type="number" min="1" defaultValue="1" /></label><button className="button full">{t.saveAward}</button></form></aside>}</section>}
       {tab === 'admin' && canModerate && <ModerationPanel proposals={proposals} token={token} t={t} onRefresh={loadQueue} onMessage={setMessage} />}
       {tab === 'park-admin' && canModerate && <ParkAdminPanel token={token} canRemove={canManageUsers} onMessage={setMessage} />}
