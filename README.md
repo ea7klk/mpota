@@ -29,4 +29,4 @@ This repository currently contains the product architecture diagrams and functio
 
 ## Technical design
 
-Technical details, system boundaries, workflows, and the logical data model are documented separately in the [architecture diagrams](docs/architecture/README.md).
+Technical details, system boundaries, workflows, and the logical data model are documented separately in the [architecture diagrams](docs/architecture/README.md). Translation catalog structure and the Global Admin maintenance workflow are described in [translation maintenance](docs/TRANSLATIONS.md).
