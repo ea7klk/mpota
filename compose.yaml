@@ -1,5 +1,7 @@
 services:
   postgres:
+    # postgis/postgis:16-3.5 currently publishes amd64 only.
+    platform: linux/amd64
     image: postgis/postgis:16-3.5
     environment:
       POSTGRES_DB: mpota
