@@ -66,6 +66,38 @@ function MapView({ parks, picking, selectedPoint, view, onPick, onViewChange, on
     L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map.current);
     parksLayer.current = L.layerGroup().addTo(map.current);
     selectionLayer.current = L.layerGroup().addTo(map.current);
+    const locateControl = new L.Control({ position: 'topleft' });
+    locateControl.onAdd = () => {
+      const button = L.DomUtil.create('button', 'map-locate-control');
+      button.type = 'button';
+      button.textContent = '⌖';
+      button.title = 'Go to my location';
+      button.setAttribute('aria-label', 'Go to my location');
+      L.DomEvent.disableClickPropagation(button);
+      L.DomEvent.on(button, 'click', () => {
+        if (!navigator.geolocation) {
+          button.title = 'Geolocation is not available in this browser';
+          return;
+        }
+        button.classList.add('is-loading');
+        button.title = 'Finding your location…';
+        navigator.geolocation.getCurrentPosition(
+          ({ coords }) => {
+            button.classList.remove('is-loading');
+            button.title = 'Go to my location';
+            map.current?.setView([coords.latitude, coords.longitude], Math.max(map.current?.getZoom() ?? 15, 15));
+          },
+          () => {
+            button.classList.remove('is-loading');
+            button.title = 'Location permission was unavailable';
+            window.setTimeout(() => { button.title = 'Go to my location'; }, 3000);
+          },
+          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+        );
+      });
+      return button;
+    };
+    locateControl.addTo(map.current);
     map.current.on('click', (event) => { if (pickingRef.current) onPickRef.current(event.latlng.lat, event.latlng.lng); });
     const saveView = () => { const center = map.current!.getCenter(); onViewChangeRef.current({ latitude: center.lat, longitude: center.lng, zoom: map.current!.getZoom() }); };
     map.current.on('moveend zoomend', saveView);
