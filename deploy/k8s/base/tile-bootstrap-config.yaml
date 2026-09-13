@@ -3,9 +3,9 @@ kind: ConfigMap
 metadata:
   name: mpota-tile-bootstrap
 data:
-  MPOTA_TILESET_URL: ""
+  MPOTA_TILESET_URL: https://btrfs.openfreemap.com/areas/planet/20260906_080001_pt/tiles.mbtiles
   MPOTA_TILESET_FILE: mpota.mbtiles
-  MPOTA_TILESET_SHA256: ""
+  MPOTA_TILESET_SHA256: ca0b8f9a510563a1ccef9caeb55269285f112fb7b7cca4b371c8826bf722ea14
   MPOTA_TILESET_REQUIRED: "true"
   MPOTA_TILESET_FORCE_REFRESH: "false"
   bootstrap.sh: |
