@@ -1,0 +1,166 @@
+@startuml MPOTA_Components
+title MPOTA — API-first components and deployment topology
+
+left to right direction
+skinparam shadowing false
+skinparam backgroundColor #FAFBFC
+skinparam componentStyle rectangle
+skinparam packageStyle rectangle
+skinparam defaultTextAlignment center
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  ArrowColor #334155
+}
+skinparam database {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+}
+skinparam queue {
+  BackgroundColor #FFF7ED
+  BorderColor #EA580C
+}
+skinparam cloud {
+  BackgroundColor #F8FAFC
+  BorderColor #94A3B8
+}
+skinparam note {
+  BackgroundColor #FFF7ED
+  BorderColor #FDBA74
+}
+
+actor "Visitor" as visitor
+actor "Registered user" as member
+actor "Approver" as approver
+actor "Administrator" as admin
+
+package "Client boundary" {
+  component "MPOTA Web App\nReact or Vue + TypeScript" as web
+  component "Leaflet map UI" as leaflet
+  component "i18n bundle\nen/es/fr/de" as i18n
+  component "OpenAPI client" as openapi_client
+  web -- leaflet
+  web -- i18n
+  web -- openapi_client
+}
+
+package "Edge / API boundary" {
+  component "Ingress / reverse proxy\nTLS, rate limiting, CSP" as ingress
+  component "API gateway\nOpenAPI / Swagger" as gateway
+  component "Authentication adapter\nOIDC or email/password" as auth
+}
+
+package "MPOTA backend" {
+  component "Identity & user service" as users
+  component "Park catalog service" as parks
+  component "Proposal & moderation service" as moderation
+  component "Approval scope policy\nCOUNTRY / CONTINENT / ALL" as policy
+  component "Reference allocator\nMP + ISO2 + 5 digits" as allocator
+  component "ADIF upload service" as upload
+  component "ADIF processing worker" as adif_worker
+  component "Statistics & awards service" as stats
+  component "Notification service" as notifications
+  component "Geocoding adapter" as geocoder
+  component "Audit/event service" as audit
+}
+
+package "Data boundary" {
+  database "PostgreSQL + PostGIS\nusers, parks, proposals, scopes, logs" as postgres
+  queue "Message broker\nprocessing and notifications" as broker
+  database "Redis\ncache, rate limits, jobs" as redis
+  cloud "Private object storage\nADIF and park media" as object_store
+}
+
+package "Map boundary" {
+  component "Tile server\nOSM-compatible, self-hosted" as tile_server
+  database "Tile database / cache" as tile_db
+  component "OSM data import pipeline\nregional extracts + updates" as osm_import
+  cloud "OSM source data\nlicense-compliant extracts" as osm_source
+}
+
+package "Delivery boundary" {
+  component "Git repository\napplication + Helm/Kustomize" as git
+  component "Argo CD" as argocd
+  component "Kubernetes cluster" as kube
+  component "Docker Compose\ntest environment" as compose
+}
+
+visitor --> web : browse/search
+member --> web : register, propose,
+upload ADIF, view stats
+approver --> web : review and approve
+admin --> web : manage users/scopes
+
+web --> ingress : HTTPS
+ingress --> gateway : REST/JSON
+gateway --> auth : authenticate
+gateway --> users : /users, /sessions
+gateway --> parks : /parks, /map
+gateway --> moderation : /proposals, /approvals
+gateway --> upload : /uploads
+gateway --> stats : /stats, /awards
+
+leaflet --> tile_server : XYZ tiles
+leaflet --> parks : approved GeoJSON
+gateway --> parks : public reads
+gateway --> moderation : authenticated writes
+gateway --> upload : authenticated writes
+
+parks --> postgres : approved catalog
+parks --> redis : cached map/search
+parks --> audit : catalog events
+moderation --> policy : evaluate actor scope
+moderation --> allocator : allocate reference on approval
+moderation --> postgres : proposals and decisions
+moderation --> geocoder : reverse geocode request
+moderation --> audit : moderation events
+allocator --> postgres : transactional sequence
+policy --> postgres : roles and multi-select scopes
+users --> postgres : identities and profiles
+users --> auth : token validation / claims
+upload --> object_store : private original ADIF
+upload --> broker : enqueue processing
+upload --> postgres : upload metadata
+adif_worker --> broker : consume jobs
+adif_worker --> object_store : read ADIF
+adif_worker --> postgres : logs, contacts, errors
+adif_worker --> parks : validate approved reference
+adif_worker --> stats : update aggregates
+stats --> redis : cached aggregates
+notifications --> broker : consume events
+notifications --> postgres : delivery status
+
+osm_source --> osm_import : extract/update data
+osm_import --> tile_db : import tiles
+tile_server --> tile_db : render/cache tiles
+
+git --> argocd : desired state
+argocd --> kube : sync application
+kube ..> ingress : deploys
+kube ..> gateway : deploys
+kube ..> parks : deploys
+kube ..> tile_server : deploys
+compose ..> web : local test stack
+compose ..> gateway : local test stack
+compose ..> postgres : local test stack
+compose ..> tile_server : local test stack
+
+note right of parks
+Every public map/search query must apply:
+  status = APPROVED
+Pending, rejected, and changes-requested
+parks never reach the public map endpoint.
+end note
+
+note bottom of tile_server
+Do not use the public community tile endpoint
+as the production basemap. Operate the tile
+server and its data lifecycle separately from
+the MPOTA application data.
+end note
+
+note bottom of gateway
+Publish an OpenAPI document at a versioned endpoint
+and use it to generate or validate the front-end client.
+end note
+@enduml

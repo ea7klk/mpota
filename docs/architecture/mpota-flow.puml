@@ -1,0 +1,157 @@
+@startuml MPOTA_Flow
+title MPOTA — end-to-end user and moderation flows
+
+skinparam shadowing false
+skinparam backgroundColor #FAFBFC
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #CBD5E1
+  ArrowColor #475569
+  DiamondBackgroundColor #FEF3C7
+  DiamondBorderColor #D97706
+  StartColor #16A34A
+  EndColor #DC2626
+}
+skinparam note {
+  BackgroundColor #FFF7ED
+  BorderColor #FDBA74
+}
+
+legend right
+  |= Symbol |= Meaning |
+  |<#DCFCE7>| user/system start or successful completion |
+  |<#FEF3C7>| decision or policy evaluation |
+  |<#FEE2E2>| rejection, quarantine, or failure |
+endlegend
+
+start
+:Visitor opens MPOTA;
+Map UI requests approved entities;
+API returns approved parks only;
+Tile URL points to self-hosted OSM-compatible tile service;
+
+if (User registered?) then (no)
+  :Browse approved parks,
+  search by reference/name,
+  view park details,
+  view public activations;
+  :Choose Register;
+  :Create account with email,
+  password, display name,
+  callsign and locale;
+  :Verify email;
+  if (Account verification succeeds?) then (yes)
+    :Account becomes ACTIVE;
+  else (no)
+    :Show verification retry flow;
+    stop
+  endif
+else (yes)
+  :Sign in;
+  if (Credentials valid?) then (yes)
+    :Issue access and refresh tokens;
+  else (no)
+    :Show authentication error;
+    stop
+  endif
+endif
+
+partition "Registered user: propose a municipal park" {
+  :Open map and choose Propose park;
+  :Click map location or drag marker;
+  :Reverse geocode through configured geocoder;
+  :Pre-fill latitude, longitude,
+  country, country code,
+  region and locality;
+  :Complete localized proposal form:
+  park name, type, description,
+  source URL, access notes,
+  photo URL or upload;
+  :Submit proposal;
+  :API validates coordinates,
+  ISO country, required fields,
+  URL/file rules and consent;
+  if (Valid proposal?) then (no)
+    :Return field-level errors;
+  else (yes)
+    :Store proposal as PENDING;
+    :Write moderation audit event;
+    :Notify approvers whose scope covers
+    the proposal country or continent;
+  endif
+}
+
+partition "Approver: review queue" {
+  :Open moderation queue;
+  :API filters pending proposals by
+  approver scope: selected countries,
+  selected continents, or ALL;
+  if (Proposal in approver scope?) then (no)
+    :Do not expose proposal for action;
+  else (yes)
+    :Review map location,
+    source evidence, duplicate candidates,
+    access notes and translated content;
+    if (Approve?) then (yes)
+      :Begin transaction;
+      :Allocate next country-local sequence;
+      :Generate MP + ISO2 + '-' + 5 digits;
+      :Create APPROVED park;
+      :Persist approval decision and audit event;
+      :Publish approved park to map/search cache;
+      :Notify submitter;
+    else (no)
+      if (Needs changes?) then (yes)
+        :Set CHANGES_REQUESTED;
+        :Notify submitter with review notes;
+        :Submitter edits and resubmits;
+      else (reject)
+        :Set REJECTED;
+        :Persist reason and audit event;
+        :Notify submitter;
+      endif
+    endif
+  endif
+}
+
+partition "ADIF logging" {
+  :Registered user opens My log uploads;
+  :Choose ADIF file;
+  :API creates upload record;
+  :Upload to private object storage;
+  :Virus/malware scan;
+  if (File safe and readable?) then (no)
+    :Set upload QUARANTINED or FAILED;
+    :Notify uploader;
+  else (yes)
+    :Queue asynchronous ADIF processing;
+    :Parse contacts and normalize callsigns,
+    timestamps, bands, modes and references;
+    :Validate required ADIF fields,
+    approved park reference,
+    activation rules and duplicates;
+    if (Validation passes?) then (yes)
+      :Persist log and contact records;
+      :Recalculate activator/hunter statistics;
+      :Expose processing result and progress;
+    else (no)
+      :Set upload REJECTED or PARTIAL;
+      :Persist row-level errors;
+      :Allow corrected re-upload;
+    endif
+  endif
+}
+
+partition "Administration" {
+  :Admin creates or edits user role;
+  :Select approval scopes using multi-select:
+  countries and/or continents;
+  :Optionally select ALL countries;
+  :Persist role and scope audit event;
+  :Scope changes affect future queue access;
+}
+
+:All public read endpoints enforce
+park.status = APPROVED;
+stop
+@enduml

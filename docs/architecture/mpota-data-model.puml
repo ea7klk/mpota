@@ -1,0 +1,355 @@
+@startuml MPOTA_Data_Model
+title MPOTA — logical data model
+
+hide methods
+hide stereotypes
+skinparam shadowing false
+skinparam backgroundColor #FAFBFC
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  ArrowColor #334155
+  AttributeIconSize 0
+}
+skinparam enum {
+  BackgroundColor #FFF7ED
+  BorderColor #EA580C
+}
+skinparam note {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+}
+
+package "Identity and authorization" {
+  class User {
+    +id: UUID <<PK>>
+    +email: string <<unique>>
+    +password_hash: string?
+    +display_name: string
+    +callsign: string?
+    +locale: Locale
+    +status: UserStatus
+    +email_verified_at: datetime?
+    +created_at: datetime
+  }
+
+  class Role {
+    +id: UUID <<PK>>
+    +code: RoleCode <<unique>>
+    +name: string
+  }
+
+  class UserRole {
+    +user_id: UUID <<PK,FK>>
+    +role_id: UUID <<PK,FK>>
+    +granted_by: UUID <<FK>>
+    +created_at: datetime
+  }
+
+  class ApprovalScope {
+    +id: UUID <<PK>>
+    +user_role_id: UUID <<FK>>
+    +scope_type: ScopeType
+    +all_countries: boolean
+    +created_at: datetime
+  }
+
+  class ApprovalScopeCountry {
+    +approval_scope_id: UUID <<PK,FK>>
+    +country_iso2: string <<PK,FK>>
+  }
+
+  class ApprovalScopeContinent {
+    +approval_scope_id: UUID <<PK,FK>>
+    +continent_code: string <<PK,FK>>
+  }
+
+  User "1" -- "0..*" UserRole
+  Role "1" -- "0..*" UserRole
+  UserRole "1" -- "0..*" ApprovalScope
+  ApprovalScope "1" -- "0..*" ApprovalScopeCountry
+  ApprovalScope "1" -- "0..*" ApprovalScopeContinent
+  Country "1" -- "0..*" ApprovalScopeCountry
+  Continent "1" -- "0..*" ApprovalScopeContinent
+  User "0..*" -- "0..1" UserRole : granted_by
+}
+
+package "Reference catalog" {
+  class Country {
+    +iso2: string <<PK>>
+    +iso3: string
+    +name: string
+    +continent_code: string
+  }
+
+  class Continent {
+    +code: string <<PK>>
+    +name: string
+  }
+
+  class Park {
+    +id: UUID <<PK>>
+    +reference: string <<unique>>
+    +country_iso2: string <<FK>>
+    +continent_code: string <<FK>>
+    +region: string?
+    +locality: string?
+    +latitude: decimal(9,6)
+    +longitude: decimal(9,6)
+    +park_type: ParkType
+    +status: ParkStatus
+    +source_url: string?
+    +access_notes: text?
+    +photo_url: string?
+    +approved_at: datetime?
+    +approved_by: UUID <<FK>>
+    +created_at: datetime
+    +updated_at: datetime
+  }
+
+  class ParkTranslation {
+    +park_id: UUID <<PK,FK>>
+    +locale: Locale <<PK>>
+    +name: string
+    +description: text?
+  }
+
+  Continent "1" -- "0..*" Country
+  Country "1" -- "0..*" Park
+  Park "1" -- "0..*" ParkTranslation
+  User "0..*" -- "0..1" Park : approved_by
+}
+
+package "Proposal and moderation" {
+  class ParkProposal {
+    +id: UUID <<PK>>
+    +submitted_by: UUID <<FK>>
+    +country_iso2: string <<FK>>
+    +continent_code: string <<FK>>
+    +region: string?
+    +locality: string?
+    +latitude: decimal(9,6)
+    +longitude: decimal(9,6)
+    +park_type: ParkType
+    +source_url: string?
+    +access_notes: text?
+    +photo_url: string?
+    +status: ProposalStatus
+    +review_notes: text?
+    +reviewed_by: UUID <<FK>>
+    +reviewed_at: datetime?
+    +created_at: datetime
+    +updated_at: datetime
+  }
+
+  class ProposalTranslation {
+    +proposal_id: UUID <<PK,FK>>
+    +locale: Locale <<PK>>
+    +name: string
+    +description: text?
+  }
+
+  class ModerationDecision {
+    +id: UUID <<PK>>
+    +proposal_id: UUID <<FK>>
+    +decided_by: UUID <<FK>>
+    +decision: ProposalStatus
+    +notes: text?
+    +created_at: datetime
+  }
+
+  User "1" -- "0..*" ParkProposal : submitted_by
+  ParkProposal "1" -- "0..*" ProposalTranslation
+  ParkProposal "1" -- "0..*" ModerationDecision
+  User "1" -- "0..*" ModerationDecision : decided_by
+  Country "1" -- "0..*" ParkProposal
+}
+
+package "Logging and outcomes" {
+  class AdifUpload {
+    +id: UUID <<PK>>
+    +uploaded_by: UUID <<FK>>
+    +object_key: string <<unique>>
+    +original_filename: string
+    +sha256: string
+    +size_bytes: bigint
+    +status: UploadStatus
+    +parser_version: string?
+    +error_count: integer
+    +uploaded_at: datetime
+    +processed_at: datetime?
+  }
+
+  class Logbook {
+    +id: UUID <<PK>>
+    +upload_id: UUID <<FK>>
+    +owner_id: UUID <<FK>>
+    +station_callsign: string
+    +started_at: datetime?
+    +ended_at: datetime?
+    +status: LogStatus
+  }
+
+  class Contact {
+    +id: UUID <<PK>>
+    +logbook_id: UUID <<FK>>
+    +park_id: UUID <<FK>>
+    +qso_callsign: string
+    +qso_datetime: datetime
+    +band: string?
+    +mode: string?
+    +frequency: decimal?
+    +rst_sent: string?
+    +rst_received: string?
+    +validity: ContactValidity
+    +error_message: string?
+  }
+
+  class UserParkStat {
+    +user_id: UUID <<PK,FK>>
+    +park_id: UUID <<PK,FK>>
+    +role: ParticipationRole <<PK>>
+    +contact_count: integer
+    +last_contact_at: datetime?
+    +updated_at: datetime
+  }
+
+  User "1" -- "0..*" AdifUpload : uploaded_by
+  AdifUpload "1" -- "0..1" Logbook
+  User "1" -- "0..*" Logbook : owner_id
+  Logbook "1" -- "0..*" Contact
+  Park "1" -- "0..*" Contact
+  User "1" -- "0..*" UserParkStat
+  Park "1" -- "0..*" UserParkStat
+}
+
+package "Operational audit" {
+  class AuditEvent {
+    +id: UUID <<PK>>
+    +actor_id: UUID <<FK>>
+    +action: string
+    +entity_type: string
+    +entity_id: UUID
+    +before_json: json?
+    +after_json: json?
+    +request_id: string?
+    +created_at: datetime
+  }
+
+  User "0..*" -- "0..1" AuditEvent : actor
+}
+
+enum Locale {
+  en
+  es
+  fr
+  de
+}
+
+enum UserStatus {
+  PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+}
+
+enum RoleCode {
+  MEMBER
+  APPROVER
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ScopeType {
+  COUNTRY
+  CONTINENT
+  ALL
+}
+
+enum ParkType {
+  MUNICIPAL_PARK
+  URBAN_FOREST
+  BOTANICAL_GARDEN
+  RECREATION_AREA
+  OTHER
+}
+
+enum ParkStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ARCHIVED
+}
+
+enum ProposalStatus {
+  PENDING
+  CHANGES_REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum UploadStatus {
+  RECEIVED
+  SCANNING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  QUARANTINED
+}
+
+enum LogStatus {
+  PROCESSING
+  VALID
+  PARTIAL
+  REJECTED
+}
+
+enum ContactValidity {
+  VALID
+  DUPLICATE
+  INVALID_PARK
+  INVALID_FIELD
+  OUTSIDE_RULES
+}
+
+enum ParticipationRole {
+  ACTIVATOR
+  HUNTER
+}
+
+note "Reference invariant" as reference_rule
+  Park.reference is generated only inside the approval transaction:
+  `MP` + uppercase Country.iso2 + `-` + LPAD(country sequence, 5, '0')
+  Example: MPCS-00001
+  The sequence is monotonic within a country and must be protected by
+  a database unique constraint and transactional allocation.
+end note
+
+note "Visibility invariant" as visibility_rule
+  Public map, search, park-detail, and GeoJSON endpoints may return only
+  Park.status = APPROVED. Authorization to see a pending proposal is a
+  separate moderation-queue permission.
+end note
+
+note "Approval scope invariant" as scope_rule
+  An approver is eligible when:
+  - an active ApprovalScope has all_countries = true; or
+  - the proposal country_iso2 is in country_codes; or
+  - the proposal continent_code is in continent_codes.
+  ApprovalScopeCountry and ApprovalScopeContinent rows represent the
+  multi-select UI values and are validated against ISO-3166 and the
+  configured continent catalog. `all_countries = true` is the explicit
+  global option.
+end note
+
+note "PostGIS invariant" as geo_rule
+  Store a generated geography(Point, 4326) from latitude/longitude for
+  spatial indexes, duplicate-distance checks, bounding-box map queries,
+  and future boundary validation.
+end note
+
+Park .. reference_rule
+Park .. visibility_rule
+ApprovalScope .. scope_rule
+Park .. geo_rule
+@enduml
