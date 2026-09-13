@@ -3,7 +3,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsInt, IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, Length, Max, MaxLength, Min, MinLength } from 'class-validator';
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../auth/auth.decorators';
 import { Public } from '../auth/public.decorator';
 import { AuthUser } from '../auth/auth.types';
@@ -29,11 +29,11 @@ class ProposalDto {
   @ApiPropertyOptional({ example: 'A centrally located municipal park suitable for portable amateur-radio operation.' })
   @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional({ example: 'https://madrid.es/parques/retiro', format: 'uri' })
-  @IsOptional() @IsUrl() sourceUrl?: string;
+  @IsOptional() @Transform(({ value }) => typeof value === 'string' && value.trim() === '' ? undefined : value) @IsUrl() sourceUrl?: string;
   @ApiPropertyOptional({ example: 'Public access during park opening hours; check local restrictions.' })
   @IsOptional() @IsString() accessNotes?: string;
   @ApiPropertyOptional({ example: 'https://example.org/photos/retiro.jpg', format: 'uri' })
-  @IsOptional() @IsUrl() photoUrl?: string;
+  @IsOptional() @Transform(({ value }) => typeof value === 'string' && value.trim() === '' ? undefined : value) @IsUrl() photoUrl?: string;
 }
 
 class DecisionDto {
@@ -90,11 +90,11 @@ class ParkUpdateDto {
   @ApiPropertyOptional({ example: 'A centrally located municipal park.' })
   @IsOptional() @IsString() description?: string;
   @ApiPropertyOptional({ example: 'https://madrid.es/parques/retiro', format: 'uri' })
-  @IsOptional() @IsUrl() sourceUrl?: string;
+  @IsOptional() @Transform(({ value }) => typeof value === 'string' && value.trim() === '' ? undefined : value) @IsUrl() sourceUrl?: string;
   @ApiPropertyOptional({ example: 'Public access during opening hours.' })
   @IsOptional() @IsString() accessNotes?: string;
   @ApiPropertyOptional({ example: 'https://example.org/photos/retiro.jpg', format: 'uri' })
-  @IsOptional() @IsUrl() photoUrl?: string;
+  @IsOptional() @Transform(({ value }) => typeof value === 'string' && value.trim() === '' ? undefined : value) @IsUrl() photoUrl?: string;
 }
 
 @ApiTags('parks')

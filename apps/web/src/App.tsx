@@ -469,7 +469,8 @@ export default function App() {
     if (tab === 'propose' && token && !locationFields.countryIso2) void resolveLocation(point.latitude, point.longitude);
   }, [tab, token]);
   const sendProposal = async (payload: Record<string, FormDataEntryValue>) => {
-    await request('/proposals', { method: 'POST', body: JSON.stringify({ ...payload, latitude: point.latitude, longitude: point.longitude }) }, token);
+    const normalizedPayload = Object.fromEntries(Object.entries(payload).filter(([, value]) => String(value).trim() !== ''));
+    await request('/proposals', { method: 'POST', body: JSON.stringify({ ...normalizedPayload, latitude: point.latitude, longitude: point.longitude }) }, token);
     setMessage('Proposal submitted for approval.');
   };
   const submitProposal = async (event: FormEvent<HTMLFormElement>) => {
