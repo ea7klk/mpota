@@ -6,3 +6,4 @@ resources:
   - worker.yaml
   - web.yaml
   - tileserver.yaml
+  - tile-bootstrap-config.yaml

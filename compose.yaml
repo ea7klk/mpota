@@ -42,11 +42,29 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: admin
     ports: ["8081:8080"]
 
+  tile-bootstrap:
+    image: alpine:3.22
+    environment:
+      MPOTA_TILESET_URL: ${MPOTA_TILESET_URL:-}
+      MPOTA_TILESET_FILE: ${MPOTA_TILESET_FILE:-mpota.mbtiles}
+      MPOTA_TILESET_SHA256: ${MPOTA_TILESET_SHA256:-}
+      MPOTA_TILESET_REQUIRED: ${MPOTA_TILESET_REQUIRED:-false}
+      MPOTA_TILESET_FORCE_REFRESH: ${MPOTA_TILESET_FORCE_REFRESH:-false}
+    command:
+      - /bin/sh
+      - -c
+      - apk add --no-cache ca-certificates curl && exec /bootstrap/bootstrap.sh
+    volumes:
+      - mpota-tile-data:/data
+      - ./infra/tiles/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+
   tileserver:
     image: maptiler/tileserver-gl:latest
     ports: ["8080:8080"]
     volumes:
-      - ./infra/tiles:/data:ro
+      - mpota-tile-data:/data:ro
+    depends_on:
+      tile-bootstrap: { condition: service_completed_successfully }
 
   api:
     build:
@@ -95,3 +113,4 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  mpota-tile-data:

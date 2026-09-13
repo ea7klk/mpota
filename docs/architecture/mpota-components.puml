@@ -76,6 +76,7 @@ package "Data boundary" {
 }
 
 package "Map boundary" {
+  component "Tile bootstrap/update job\nconfigured MBTiles artifact" as tile_bootstrap
   component "Tile server\nOSM-compatible, self-hosted" as tile_server
   database "Tile database / cache" as tile_db
   component "OSM data import pipeline\nregional extracts + updates" as osm_import
@@ -144,6 +145,7 @@ notifications --> postgres : delivery status
 
 osm_source --> osm_import : extract/update data
 osm_import --> tile_db : import tiles
+tile_bootstrap --> tile_db : download if absent\noptional checksum / force refresh
 tile_server --> tile_db : render/cache tiles
 
 git --> argocd : desired state
@@ -156,6 +158,10 @@ compose ..> web : local test stack
 compose ..> gateway : local test stack
 compose ..> postgres : local test stack
 compose ..> tile_server : local test stack
+compose ..> tile_bootstrap : named-volume bootstrap
+
+tile_bootstrap ..> compose : Docker one-shot service
+tile_bootstrap ..> kube : Kubernetes init container
 
 note right of parks
 Every public map/search query must apply:
@@ -169,6 +175,13 @@ Do not use the public community tile endpoint
 as the production basemap. Operate the tile
 server and its data lifecycle separately from
 the MPOTA application data.
+end note
+
+note right of tile_bootstrap
+The source URL is deployment configuration because
+current regional extracts are selected outside Git.
+Downloads are written to a temporary file and moved
+atomically after optional SHA-256 verification.
 end note
 
 note bottom of gateway

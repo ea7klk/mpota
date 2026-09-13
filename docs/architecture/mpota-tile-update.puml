@@ -1,0 +1,61 @@
+@startuml MPOTA_Tile_Update
+title MPOTA - tile set bootstrap and refresh
+
+skinparam shadowing false
+skinparam backgroundColor #FAFBFC
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  DiamondBackgroundColor #FFF7ED
+  DiamondBorderColor #EA580C
+  ArrowColor #334155
+}
+skinparam note {
+  BackgroundColor #EFF6FF
+  BorderColor #2563EB
+}
+
+start
+:Start Docker Compose or Kubernetes tile workload;
+:Read configured MBTiles URL, file name,
+checksum, required flag, and refresh flag;
+
+if (Tile file exists and
+force refresh is false?) then (yes)
+  :Keep the existing tile set;
+  :Start TileServer GL read-only;
+  stop
+else (no)
+  if (Tile source URL configured?) then (yes)
+    :Download to a temporary .part file
+with retries;
+    if (Optional SHA-256 valid?) then (yes)
+      :Atomically move .part file
+into the named volume or PVC;
+      :Write source/checksum/timestamp manifest;
+      :Start TileServer GL read-only;
+      stop
+    else (no)
+      :Delete incomplete or invalid temporary file;
+      :Fail the tile workload;
+      stop
+    endif
+  else (no)
+    if (Tile set required?) then (yes)
+      :Fail the tile workload with configuration error;
+      stop
+    else (no)
+      :Log that bootstrap was skipped;
+      :Start TileServer GL for local development;
+      stop
+    endif
+  endif
+endif
+
+note right
+Docker: tile-bootstrap one-shot service + mpota-tile-data volume.
+Kubernetes: tile-bootstrap init container + mpota-tiles PVC.
+The artifact URL is deployment configuration because regional extracts
+and licensed mirrors are selected outside the application repository.
+end note
+@enduml

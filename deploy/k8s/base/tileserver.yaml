@@ -12,17 +12,34 @@ spec:
     spec:
       nodeSelector:
         kubernetes.io/arch: amd64
+      initContainers:
+        - name: tile-bootstrap
+          image: alpine:3.22
+          envFrom:
+            - configMapRef: { name: mpota-tile-bootstrap }
+          command: ["/bin/sh", "-c"]
+          args:
+            - apk add --no-cache ca-certificates curl && exec /bin/sh /bootstrap/bootstrap.sh
+          volumeMounts:
+            - { name: tiles, mountPath: /data }
+            - { name: bootstrap, mountPath: /bootstrap, readOnly: true }
       containers:
         - name: tileserver
           image: maptiler/tileserver-gl:latest
           ports: [{ containerPort: 8080 }]
-          volumeMounts: [{ name: tiles, mountPath: /data }]
+          volumeMounts: [{ name: tiles, mountPath: /data, readOnly: true }]
           resources:
             requests: { cpu: 250m, memory: 512Mi }
             limits: { cpu: 2000m, memory: 4Gi }
       volumes:
         - name: tiles
           persistentVolumeClaim: { claimName: mpota-tiles }
+        - name: bootstrap
+          configMap:
+            name: mpota-tile-bootstrap
+            items:
+              - key: bootstrap.sh
+                path: bootstrap.sh
 ---
 apiVersion: v1
 kind: Service
