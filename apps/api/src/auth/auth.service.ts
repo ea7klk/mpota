@@ -27,6 +27,7 @@ export class AuthService implements OnModuleInit {
     }).onConflictDoNothing({ target: users.email }).returning({ id: users.id, email: users.email });
 
     if (created) console.log(`Bootstrap administrator ready: ${created.email}`);
+    else await this.db.db.update(users).set({ role: 'GLOBAL_ADMIN' }).where(eq(users.email, email));
   }
 
   private async tokenFor(user: AuthInput) {

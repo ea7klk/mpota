@@ -18,7 +18,16 @@ export class UsersService {
   constructor(private readonly db: DbService) {}
 
   async list() {
-    return this.db.db.select({ id: users.id, email: users.email, displayName: users.displayName, callsign: users.callsign, locale: users.locale, status: users.status, role: users.role, createdAt: users.createdAt }).from(users).orderBy(users.email);
+    const rows = await this.db.db.select({ id: users.id, email: users.email, displayName: users.displayName, callsign: users.callsign, locale: users.locale, status: users.status, role: users.role, createdAt: users.createdAt }).from(users).orderBy(users.email);
+    const scopes = await this.db.db.select().from(approvalScopes);
+    return rows.map((user) => ({
+      ...user,
+      approvalScope: scopes.find((scope) => scope.userId === user.id) ?? {
+        countryCodes: [],
+        continentCodes: [],
+        allCountries: false
+      }
+    }));
   }
 
   async updateAccess(actor: AuthUser, id: string, input: AccessUpdate) {

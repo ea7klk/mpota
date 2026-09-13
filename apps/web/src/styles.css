@@ -22,3 +22,26 @@ main { width: min(1400px, 90vw); margin: 0 auto; flex: 1; } .hero { display: fle
 footer { display: flex; justify-content: space-between; gap: 20px; padding: 28px 5vw; color: #8993a4; border-top: 1px solid #e4e9f1; font-size: 12px; }
 @media (max-width: 900px) { .topbar { height: auto; padding: 14px 5vw; flex-wrap: wrap; gap: 10px; } nav { order: 3; width: 100%; overflow: auto; } .hero { padding: 45px 0 30px; flex-direction: column; align-items: start; } .hero-card { width: 100%; } .content-grid { grid-template-columns: 1fr; } .map { height: 470px; } footer { flex-direction: column; } }
 @media (max-width: 560px) { .header-actions .user-pill { max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .hero-actions { align-items: start; flex-direction: column; gap: 14px; } .panel { padding: 17px; } .queue-row { align-items: start; flex-direction: column; } }
+
+.map-hint { margin: 3px 0 0; color: #788396; font-size: 13px; }
+.coordinate-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+select[multiple] { min-height: 108px; padding: 6px; }
+select:disabled { color: #98a2b3; background: #f2f4f7; }
+.admin-sections { display: grid; gap: 20px; margin-bottom: 44px; }
+.queue-content { flex: 1; min-width: 0; }
+.queue-content textarea { margin-top: 8px; }
+.user-list { display: grid; gap: 14px; }
+.user-admin-row { display: grid; grid-template-columns: minmax(190px, .7fr) minmax(0, 1.3fr); gap: 20px; padding: 18px; border: 1px solid #edf0f4; border-radius: 14px; }
+.user-summary h3 { margin-bottom: 4px; }
+.user-summary h3 small { color: #8993a4; font-weight: 600; }
+.user-summary .muted { margin-bottom: 0; overflow-wrap: anywhere; }
+.user-access { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; }
+.user-access label:first-child, .checkbox-row { grid-column: 1 / -1; }
+.checkbox-row { display: flex; align-items: center; gap: 8px; }
+.checkbox-row input { width: auto; }
+.park-marker, .proposal-marker { border: 0; background: transparent; }
+.park-marker span, .proposal-marker span { display: grid; place-items: center; color: #fff; font-weight: 900; border: 3px solid #fff; box-shadow: 0 3px 10px rgba(23,32,51,.28); }
+.park-marker span { width: 38px; height: 38px; border-radius: 13px 13px 13px 3px; transform: rotate(-45deg); background: #ef6c35; font-size: 11px; }
+.park-marker b, .proposal-marker b { transform: rotate(45deg); }
+.proposal-marker span { width: 32px; height: 32px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: #172033; font-size: 22px; }
+@media (max-width: 700px) { .user-admin-row { grid-template-columns: 1fr; } .user-access { grid-template-columns: 1fr; } .user-access label:first-child, .checkbox-row { grid-column: auto; } }
