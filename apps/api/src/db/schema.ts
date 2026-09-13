@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { boolean, geometry, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, date, geometry, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const userStatus = pgEnum('user_status', ['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'DEACTIVATED', 'DELETED']);
 export const userRole = pgEnum('user_role', ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN']);
@@ -149,12 +149,15 @@ export const awardGrants = pgTable('award_grants', {
 export const adifUploads = pgTable('adif_uploads', {
   id: uuid('id').defaultRandom().primaryKey(),
   uploadedBy: uuid('uploaded_by').notNull().references(() => users.id),
+  parkId: uuid('park_id').references(() => parks.id),
+  source: varchar('source', { length: 16 }).notNull().default('ADIF'),
   objectKey: text('object_key').notNull().unique(),
   originalFilename: text('original_filename').notNull(),
   sha256: varchar('sha256', { length: 64 }).notNull(),
   sizeBytes: integer('size_bytes').notNull(),
   status: uploadStatus('status').notNull().default('RECEIVED'),
   contactCount: integer('contact_count').notNull().default(0),
+  validCount: integer('valid_count').notNull().default(0),
   errorCount: integer('error_count').notNull().default(0),
   uploadedAt: timestamp('uploaded_at').notNull().defaultNow(),
   processedAt: timestamp('processed_at')
@@ -168,6 +171,7 @@ export const contacts = pgTable('contacts', {
   parkReference: varchar('park_reference', { length: 10 }),
   qsoCallsign: varchar('qso_callsign', { length: 32 }).notNull(),
   qsoDatetime: timestamp('qso_datetime'),
+  qsoDateUtc: date('qso_date_utc'),
   band: varchar('band', { length: 32 }),
   mode: varchar('mode', { length: 32 }),
   validity: varchar('validity', { length: 32 }).notNull().default('VALID'),

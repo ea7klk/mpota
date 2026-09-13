@@ -71,16 +71,21 @@ CREATE TABLE IF NOT EXISTS award_grants (
   UNIQUE (user_id, award_id, award_version)
 );
 CREATE TABLE IF NOT EXISTS adif_uploads (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), uploaded_by uuid NOT NULL REFERENCES users(id), object_key text NOT NULL UNIQUE,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), uploaded_by uuid NOT NULL REFERENCES users(id), park_id uuid REFERENCES parks(id),
+  source varchar(16) NOT NULL DEFAULT 'ADIF', object_key text NOT NULL UNIQUE,
   original_filename text NOT NULL, sha256 varchar(64) NOT NULL, size_bytes integer NOT NULL,
-  status upload_status NOT NULL DEFAULT 'RECEIVED', contact_count integer NOT NULL DEFAULT 0, error_count integer NOT NULL DEFAULT 0,
+  status upload_status NOT NULL DEFAULT 'RECEIVED', contact_count integer NOT NULL DEFAULT 0, valid_count integer NOT NULL DEFAULT 0,
+  error_count integer NOT NULL DEFAULT 0,
   uploaded_at timestamptz NOT NULL DEFAULT now(), processed_at timestamptz
 );
 CREATE TABLE IF NOT EXISTS contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), upload_id uuid NOT NULL REFERENCES adif_uploads(id), user_id uuid NOT NULL REFERENCES users(id),
-  park_id uuid REFERENCES parks(id), park_reference varchar(10), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz,
+  park_id uuid REFERENCES parks(id), park_reference varchar(10), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz, qso_date_utc date,
   band varchar(32), mode varchar(32), validity varchar(32) NOT NULL DEFAULT 'VALID', error_message text
 );
+CREATE UNIQUE INDEX IF NOT EXISTS contacts_daily_hunter_unique
+  ON contacts(user_id, park_id, qso_callsign, qso_date_utc)
+  WHERE validity = 'VALID' AND park_id IS NOT NULL AND qso_date_utc IS NOT NULL;
 CREATE TABLE IF NOT EXISTS audit_events (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), actor_id uuid REFERENCES users(id), action varchar(120) NOT NULL,
   entity_type varchar(80) NOT NULL, entity_id uuid, before_json jsonb, after_json jsonb, request_id varchar(120), created_at timestamptz NOT NULL DEFAULT now()
