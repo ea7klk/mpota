@@ -34,7 +34,7 @@ export const approvalScopes = pgTable('approval_scopes', {
 
 export const parks = pgTable('parks', {
   id: uuid('id').defaultRandom().primaryKey(),
-  reference: varchar('reference', { length: 9 }).notNull().unique(),
+  reference: varchar('reference', { length: 10 }).notNull().unique(),
   countryIso2: varchar('country_iso2', { length: 2 }).notNull(),
   continentCode: varchar('continent_code', { length: 4 }).notNull(),
   region: varchar('region', { length: 160 }),
@@ -153,7 +153,7 @@ export const contacts = pgTable('contacts', {
   uploadId: uuid('upload_id').notNull().references(() => adifUploads.id),
   userId: uuid('user_id').notNull().references(() => users.id),
   parkId: uuid('park_id').references(() => parks.id),
-  parkReference: varchar('park_reference', { length: 9 }),
+  parkReference: varchar('park_reference', { length: 10 }),
   qsoCallsign: varchar('qso_callsign', { length: 32 }).notNull(),
   qsoDatetime: timestamp('qso_datetime'),
   band: varchar('band', { length: 32 }),

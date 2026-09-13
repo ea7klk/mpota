@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS approval_scopes (
 );
 CREATE TABLE IF NOT EXISTS country_sequences (country_iso2 varchar(2) PRIMARY KEY, next_value integer NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS parks (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), reference varchar(9) NOT NULL UNIQUE,
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), reference varchar(10) NOT NULL UNIQUE,
   country_iso2 varchar(2) NOT NULL, continent_code varchar(4) NOT NULL, region varchar(160), locality varchar(160),
   latitude numeric(9,6) NOT NULL, longitude numeric(9,6) NOT NULL, geom geometry(Point,4326),
   park_type varchar(64) NOT NULL DEFAULT 'MUNICIPAL_PARK', status park_status NOT NULL DEFAULT 'PENDING',
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS adif_uploads (
 );
 CREATE TABLE IF NOT EXISTS contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), upload_id uuid NOT NULL REFERENCES adif_uploads(id), user_id uuid NOT NULL REFERENCES users(id),
-  park_id uuid REFERENCES parks(id), park_reference varchar(9), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz,
+  park_id uuid REFERENCES parks(id), park_reference varchar(10), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz,
   band varchar(32), mode varchar(32), validity varchar(32) NOT NULL DEFAULT 'VALID', error_message text
 );
 CREATE TABLE IF NOT EXISTS audit_events (
