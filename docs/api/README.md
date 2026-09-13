@@ -9,6 +9,19 @@ The API is versioned under `/api/v1` and uses bearer authentication for register
 
 The main domains are authentication, approved parks, park image uploads, proposals/moderation, awards, ADIF uploads, and global user administration. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
 
+## QSO logging and ADIF processing
+
+QSO entry is park-scoped and uses the same validation service for manual and uploaded records:
+
+- `POST /api/v1/parks/{reference}/qsos` adds one manually entered QSO.
+- `POST /api/v1/parks/{reference}/uploads/adif` uploads an ADIF file for the selected approved park.
+- `GET /api/v1/uploads` lists the authenticated user’s ADIF files with park, upload date, size, status, and valid/invalid counts.
+- `GET /api/v1/uploads/{id}/rejected-qsos` returns the rejected records and validation reasons for an owned ADIF upload.
+
+The legacy `POST /api/v1/uploads/adif` route remains available, but it requires the `parkReference` multipart field. ADIF records do not select their own park: the park supplied by the request is applied to every record, which keeps the activation context explicit.
+
+The processor rejects malformed callsigns, invalid dates, exact duplicate QSOs, and repeated hunter callsigns in the same ADIF file. A valid hunter contact can count only once per activator, park, and UTC calendar day. Uploads progress through `RECEIVED`, `PROCESSING`, `COMPLETED`, `PARTIAL`, or `FAILED`; invalid records are retained with a reason so the user can correct and resubmit them.
+
 Registered users can upload JPEG, PNG, WebP, or GIF images with `POST /api/v1/parks/{reference}/images`. Binary files are kept in the dedicated `S3_PARK_IMAGES_BUCKET` under `CONTINENT/COUNTRY/{reference}-{serial}.{extension}`. `GET /api/v1/parks/{reference}/images` lists image metadata, and the returned image URLs serve approved-park images for thumbnails and full-size viewing.
 
 ## Local bootstrap administrator
