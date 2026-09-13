@@ -36,6 +36,7 @@ for (const [continent, countries] of Object.entries({
 export type ReverseGeocodeInput = { latitude: number; longitude: number };
 export type ParkAdminQuery = { page?: number; pageSize?: number; continentCode?: string; countryIso2?: string; region?: string; locality?: string };
 export type ParkUpdateInput = { countryIso2?: string; continentCode?: string; region?: string | null; locality?: string | null; latitude?: number; longitude?: number; parkType?: string; name?: string; description?: string | null; sourceUrl?: string | null; accessNotes?: string | null; photoUrl?: string | null };
+type ApprovalPolicy = { allCountries: boolean; countryCodes: string[]; continentCodes: string[] };
 
 export type ParkImage = {
   id: string;
@@ -192,8 +193,7 @@ export class ParksService {
     if (query.locality?.trim()) filters.push(ilike(parks.locality, `%${query.locality.trim()}%`));
 
     if (user.role !== 'GLOBAL_ADMIN' && user.role !== 'SYSTEM_BOOTSTRAP_ADMIN') {
-      const [scope] = await this.db.db.select().from(approvalScopes).where(eq(approvalScopes.userId, user.id));
-      if (!scope) return { items: [], page, pageSize, total: 0, totalPages: 0 };
+      const scope = await this.approvalPolicy(user);
       if (!scope.allCountries) {
         const scopeFilters = [];
         if (scope.countryCodes.length) scopeFilters.push(inArray(parks.countryIso2, scope.countryCodes));
@@ -324,9 +324,8 @@ export class ParksService {
   async queue(user: AuthUser) {
     const rows = await this.db.db.select().from(parkProposals).where(eq(parkProposals.status, 'PENDING')).orderBy(desc(parkProposals.createdAt));
     if (user.role === 'GLOBAL_ADMIN' || user.role === 'SYSTEM_BOOTSTRAP_ADMIN') return rows;
-    const [scope] = await this.db.db.select().from(approvalScopes).where(eq(approvalScopes.userId, user.id));
-    if (!scope) return [];
-    return rows.filter((row) => scope.allCountries || scope.countryCodes.includes(row.countryIso2) || scope.continentCodes.includes(row.continentCode));
+    const scope = await this.approvalPolicy(user);
+    return rows.filter((row) => this.inApprovalScope(scope, row.countryIso2, row.continentCode));
   }
 
   async approve(user: AuthUser, proposalId: string) {
@@ -385,7 +384,22 @@ export class ParksService {
   private async assertScope(user: AuthUser, country: string, continent: string, tx: any = this.db.db) {
     if (user.role === 'GLOBAL_ADMIN' || user.role === 'SYSTEM_BOOTSTRAP_ADMIN') return;
     if (user.role !== 'ENTITY_ADMIN') throw new ForbiddenException('Entity admin role required');
-    const [scope] = await tx.select().from(approvalScopes).where(eq(approvalScopes.userId, user.id));
-    if (!scope || (!scope.allCountries && !scope.countryCodes.includes(country) && !scope.continentCodes.includes(continent))) throw new ForbiddenException('Proposal is outside your approval scope');
+    const scope = await this.approvalPolicy(user, tx);
+    if (!this.inApprovalScope(scope, country, continent)) throw new ForbiddenException('Park is outside your approval scope');
+  }
+
+  private async approvalPolicy(user: AuthUser, tx: any = this.db.db): Promise<ApprovalPolicy> {
+    const scopes = await tx.select().from(approvalScopes).where(eq(approvalScopes.userId, user.id));
+    const countryCodes: string[] = scopes.flatMap((scope: any) => (scope.countryCodes ?? []) as string[]);
+    const continentCodes: string[] = scopes.flatMap((scope: any) => (scope.continentCodes ?? []) as string[]);
+    return {
+      allCountries: scopes.some((scope: any) => scope.allCountries),
+      countryCodes: Array.from(new Set(countryCodes.map((code) => code.toUpperCase()))),
+      continentCodes: Array.from(new Set(continentCodes.map((code) => code.toUpperCase())))
+    };
+  }
+
+  private inApprovalScope(scope: ApprovalPolicy, country: string, continent: string) {
+    return scope.allCountries || scope.countryCodes.includes(country.toUpperCase()) || scope.continentCodes.includes(continent.toUpperCase());
   }
 }
