@@ -109,6 +109,8 @@ services:
       BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-MPOTA Administrator}
       BOOTSTRAP_ADMIN_CALLSIGN: ${BOOTSTRAP_ADMIN_CALLSIGN:-}
       BOOTSTRAP_ADMIN_LOCALE: ${BOOTSTRAP_ADMIN_LOCALE:-en}
+      GEOCODER_URL: ${GEOCODER_URL:-https://nominatim.openstreetmap.org/reverse}
+      GEOCODER_USER_AGENT: ${GEOCODER_USER_AGENT:-MPOTA/0.1 (configure contact address)}
       NATS_URL: nats://nats:4222
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1

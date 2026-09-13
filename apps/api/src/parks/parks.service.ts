@@ -19,6 +19,21 @@ export type ProposalInput = {
   photoUrl?: string;
 };
 
+const COUNTRY_CONTINENTS: Record<string, string> = {};
+for (const [continent, countries] of Object.entries({
+  AF: 'DZ AO BJ BW BF BI CV CM CF TD KM CG CD CI DJ EG GQ ER SZ ET GA GM GH GN GW KE LS LR LY MG MW ML MR MU MA MZ NA NE NG RW RE SH ST SN SC SL SO ZA SS SD TZ TG TN UG EH ZM ZW',
+  AN: 'AQ BV GS HM TF',
+  AS: 'AF AM AZ BH BD BT BN KH CN CX CC GE HK IN ID IR IQ IL JP JO KZ KW KG LA LB MO MY MV MN MM NP KP OM PK PS PH QA SA SG LK SY TW TJ TH TL TR TM AE UZ VN YE',
+  EU: 'AD AL AT AX BA BE BG BY CH CY CZ DE DK EE ES FI FO FR GB GG GI GR HR HU IE IM IS IT JE LI LT LU LV MC MD ME MF MK MT NL NO PL PT RO RS RU SE SI SJ SK SM UA VA',
+  NA: 'AI AG AW BS BB BZ BM CA KY CR CU CW DM DO SV GL GD GP GT HT HN JM MQ MX MS NI PA PM PR KN LC MF VC SX BL TT TC US VI VG',
+  OC: 'AS AU CK FJ PF GU KI MH FM NR NC NZ NU NF MP PW PG PN WS SB TK TO TV UM VU WF',
+  SA: 'AR BO BR CL CO EC FK GF GY PY PE SR UY VE'
+})) {
+  for (const country of countries.split(' ')) COUNTRY_CONTINENTS[country] = continent;
+}
+
+export type ReverseGeocodeInput = { latitude: number; longitude: number };
+
 @Injectable()
 export class ParksService {
   constructor(private readonly db: DbService) {}
@@ -80,6 +95,39 @@ export class ParksService {
       ORDER BY distance_meters
     `);
     return { duplicates: rows.rows };
+  }
+
+  async reverseGeocode(input: ReverseGeocodeInput) {
+    if (input.latitude < -90 || input.latitude > 90 || input.longitude < -180 || input.longitude > 180) {
+      throw new BadRequestException('Coordinates are out of range');
+    }
+    const empty = { countryName: '', countryIso2: '', continentCode: '', region: '', locality: '' };
+    try {
+      const endpoint = new URL(process.env.GEOCODER_URL ?? 'https://nominatim.openstreetmap.org/reverse');
+      endpoint.search = new URLSearchParams({ format: 'jsonv2', addressdetails: '1', zoom: '18', lat: String(input.latitude), lon: String(input.longitude) }).toString();
+      const response = await fetch(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': process.env.GEOCODER_USER_AGENT ?? 'MPOTA/0.1 (reverse geocoding; configure GEOCODER_USER_AGENT)'
+        },
+        signal: AbortSignal.timeout(6000)
+      });
+      if (!response.ok) return empty;
+      const result = await response.json() as { address?: Record<string, string> };
+      const address = result.address ?? {};
+      const countryIso2 = String(address.country_code ?? '').toUpperCase();
+      const addressContinent = String(address.continent_code ?? address.continent ?? '').toUpperCase();
+      const continentCode = ['AF', 'AN', 'AS', 'EU', 'NA', 'OC', 'SA'].includes(addressContinent)
+        ? addressContinent
+        : COUNTRY_CONTINENTS[countryIso2] ?? '';
+      return {
+        countryName: address.country ?? '', countryIso2, continentCode,
+        region: address.state ?? address.region ?? address.county ?? '',
+        locality: address.city ?? address.town ?? address.village ?? address.municipality ?? address.hamlet ?? address.suburb ?? ''
+      };
+    } catch {
+      return empty;
+    }
   }
 
   async mine(user: AuthUser) {

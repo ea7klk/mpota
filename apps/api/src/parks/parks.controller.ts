@@ -45,6 +45,13 @@ class DuplicateCheckDto {
   @IsLongitude() longitude!: number;
 }
 
+class ReverseGeocodeDto {
+  @ApiProperty({ example: 40.4168, minimum: -90, maximum: 90 })
+  @IsLatitude() latitude!: number;
+  @ApiProperty({ example: -3.7038, minimum: -180, maximum: 180 })
+  @IsLongitude() longitude!: number;
+}
+
 @ApiTags('parks')
 @Controller()
 export class ParksController {
@@ -69,6 +76,11 @@ export class ParksController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Find approved parks and pending proposals within 150 metres' })
   duplicateCheck(@Body() dto: DuplicateCheckDto) { return this.parks.nearby(dto); }
+
+  @Post('proposals/reverse-geocode')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Resolve country, continent, region, and locality from proposal coordinates' })
+  reverseGeocode(@Body() dto: ReverseGeocodeDto) { return this.parks.reverseGeocode(dto); }
 
   @Get('proposals/mine')
   @ApiBearerAuth()
