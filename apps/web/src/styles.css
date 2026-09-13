@@ -247,11 +247,15 @@ main { width: min(1400px, 90vw); margin: 0 auto; flex: 1; } h1, h2, h3, p { marg
 .editor-window { min-height: 100vh; padding-bottom: 30px; background: var(--cream); }
 .editor-header { display: flex; justify-content: space-between; align-items: center; gap: 20px; padding: 18px 4vw; border-bottom: 1px solid rgba(11,63,98,.15); background: rgba(255,247,232,.95); }
 .editor-header h1 { margin: 0; font-size: clamp(30px, 4vw, 52px); }
+.editor-header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.editor-status { padding: 8px 12px; border-radius: 999px; font-size: 12px; font-weight: 900; letter-spacing: .07em; text-transform: uppercase; }
+.editor-status-active { color: #17643d; background: rgba(109,179,77,.25); }
+.editor-status-inactive { color: #873d32; background: rgba(209,99,78,.16); }
 .editor-window > .notice { width: min(1400px, 92vw); margin: 18px auto 0; }
 .editor-layout { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(330px, .8fr); gap: 20px; width: min(1500px, 92vw); margin: 22px auto 0; }
 .editor-map-panel .map { height: min(700px, calc(100vh - 190px)); min-height: 520px; }
 .editor-form { display: grid; align-content: start; gap: 12px; max-height: calc(100vh - 150px); overflow: auto; }
-.editor-actions { justify-content: flex-end; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); }
+.editor-actions { position: sticky; bottom: -24px; z-index: 2; justify-content: flex-end; margin: 8px -24px -24px; padding: 14px 24px 24px; border-top: 1px solid var(--line); background: rgba(255,253,249,.96); }
 .editor-loading { display: grid; min-height: 100vh; place-items: center; color: var(--sage); font-size: 18px; }
 footer { display: flex; justify-content: space-between; gap: 20px; padding: 30px 5vw; color: #d9e9e7; background: var(--navy); font-size: 12px; }
 @media (max-width: 900px) { .topbar { height: auto; padding: 14px 5vw; flex-wrap: wrap; gap: 10px; } nav { order: 3; width: 100%; overflow: auto; } .hero { padding: 45px 0 30px; flex-direction: column; align-items: start; } .hero-card { width: 100%; } .content-grid { grid-template-columns: 1fr; } .map { height: 470px; } footer { flex-direction: column; } .home-hero { grid-template-columns: 1fr; gap: 28px; padding-top: 25px; } .home-signal-card { min-height: 240px; transform: none; } .home-feature-grid, .home-policy-links, .policy-sections { grid-template-columns: 1fr; } .home-feature-card { min-height: 200px; } .policy-heading { align-items: start; flex-direction: column; } }
