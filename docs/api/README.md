@@ -47,3 +47,5 @@ BOOTSTRAP_ADMIN_LOCALE=en
 The bootstrap account receives the `GLOBAL_ADMIN` role. Supply the password through an ignored local `.env` file or a deployment secret, never through a committed file.
 
 The default Compose stack runs native containers on Apple Silicon where supported, with targeted `linux/amd64` emulation for PostgreSQL/PostGIS, MinIO, Keycloak, and TileServer GL for Docker Desktop compatibility. Use `docker compose -f compose.yaml -f compose.amd64-parity.yaml up --build` when you need to exercise the complete production `linux/amd64` image path locally under emulation.
+
+Compose build delegation to Buildx Bake is enabled in the local environment with `COMPOSE_BAKE=true`, which can improve multi-service build performance. Remove or override the variable when using a Docker Compose installation without Bake support.
