@@ -9,4 +9,4 @@ The API is versioned under `/api/v1` and uses bearer authentication for register
 
 The main domains are authentication, approved parks, proposals/moderation, awards, ADIF uploads, and global user administration. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
 
-The default Compose stack runs native containers on Apple Silicon. Use `docker compose -f compose.yaml -f compose.amd64-parity.yaml up --build` when you need to exercise the production `linux/amd64` image path locally under emulation.
+The default Compose stack runs native containers on Apple Silicon where supported, with targeted `linux/amd64` emulation for MinIO, Keycloak, and TileServer GL for Docker Desktop compatibility. Use `docker compose -f compose.yaml -f compose.amd64-parity.yaml up --build` when you need to exercise the complete production `linux/amd64` image path locally under emulation.
