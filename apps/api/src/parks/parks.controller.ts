@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiProperty, ApiPropertyOptional, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { IsInt, IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, Length, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../auth/auth.decorators';
@@ -70,6 +70,17 @@ class ParkAdminQueryDto {
   @IsOptional() @IsString() @MaxLength(160) locality?: string;
 }
 
+class ParkViewportQueryDto {
+  @ApiProperty({ example: 35.5, description: 'Southern latitude of the displayed map area' })
+  @Type(() => Number) @IsLatitude() south!: number;
+  @ApiProperty({ example: 44.5, description: 'Northern latitude of the displayed map area' })
+  @Type(() => Number) @IsLatitude() north!: number;
+  @ApiProperty({ example: -10.5, description: 'Western longitude of the displayed map area' })
+  @Type(() => Number) @IsLongitude() west!: number;
+  @ApiProperty({ example: 4.5, description: 'Eastern longitude of the displayed map area' })
+  @Type(() => Number) @IsLongitude() east!: number;
+}
+
 class ParkUpdateDto {
   @ApiPropertyOptional({ example: 'ES', readOnly: true })
   @IsOptional() @IsString() @Length(2, 2) countryIso2?: string;
@@ -106,6 +117,15 @@ export class ParksController {
   @Get('parks')
   @ApiOperation({ summary: 'List approved parks for the public map' })
   list() { return this.parks.approved(); }
+
+  @Public()
+  @Get('parks/viewport')
+  @ApiOperation({ summary: 'List approved and retired entities inside the displayed map area' })
+  @ApiQuery({ name: 'south', required: true, type: Number, example: 35.5 })
+  @ApiQuery({ name: 'north', required: true, type: Number, example: 44.5 })
+  @ApiQuery({ name: 'west', required: true, type: Number, example: -10.5 })
+  @ApiQuery({ name: 'east', required: true, type: Number, example: 4.5 })
+  viewport(@Query() query: ParkViewportQueryDto) { return this.parks.inViewport(query); }
 
   @Public()
   @Get('parks/:reference/images')

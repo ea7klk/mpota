@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, gte, ilike, inArray, lte, or, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { approvalScopes, auditEvents, countrySequences, moderationDecisions, parkImages, parkProposals, parks } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
@@ -35,6 +35,7 @@ for (const [continent, countries] of Object.entries({
 
 export type ReverseGeocodeInput = { latitude: number; longitude: number };
 export type ParkAdminQuery = { page?: number; pageSize?: number; continentCode?: string; countryIso2?: string; region?: string; locality?: string };
+export type ParkViewportQuery = { south: number; north: number; west: number; east: number };
 export type ParkUpdateInput = { countryIso2?: string; continentCode?: string; region?: string | null; locality?: string | null; latitude?: number; longitude?: number; parkType?: string; name?: string; description?: string | null; sourceUrl?: string | null; accessNotes?: string | null; photoUrl?: string | null };
 type ApprovalPolicy = { allCountries: boolean; countryCodes: string[]; continentCodes: string[] };
 
@@ -195,6 +196,22 @@ export class ParksService {
       name: parks.name, description: parks.description, sourceUrl: parks.sourceUrl,
       accessNotes: parks.accessNotes, photoUrl: parks.photoUrl, status: parks.status
     }).from(parks).where(inArray(parks.status, ['APPROVED', 'RETIRED'])).orderBy(parks.reference).limit(2000);
+  }
+
+  async inViewport(query: ParkViewportQuery) {
+    const south = Math.min(query.south, query.north);
+    const north = Math.max(query.south, query.north);
+    const latitudeFilter = and(gte(parks.latitude, String(south)), lte(parks.latitude, String(north)));
+    const longitudeFilter = query.west <= query.east
+      ? and(gte(parks.longitude, String(query.west)), lte(parks.longitude, String(query.east)))
+      : or(gte(parks.longitude, String(query.west)), lte(parks.longitude, String(query.east)));
+    return this.db.db.select({
+      id: parks.id, reference: parks.reference, countryIso2: parks.countryIso2,
+      continentCode: parks.continentCode, region: parks.region, locality: parks.locality,
+      latitude: parks.latitude, longitude: parks.longitude, parkType: parks.parkType,
+      name: parks.name, description: parks.description, sourceUrl: parks.sourceUrl,
+      accessNotes: parks.accessNotes, photoUrl: parks.photoUrl, status: parks.status
+    }).from(parks).where(and(latitudeFilter, longitudeFilter, inArray(parks.status, ['APPROVED', 'RETIRED']))).orderBy(parks.reference).limit(2000);
   }
 
   async adminList(user: AuthUser, query: ParkAdminQuery) {
