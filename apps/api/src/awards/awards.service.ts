@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { auditEvents, awardGrants, awardProgress, awards } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
@@ -42,8 +42,43 @@ export class AwardsService {
   }
 
   async progress(user: AuthUser) {
+    await this.recalculateForUser(user.id);
     const rows = await this.db.db.select().from(awardProgress).where(eq(awardProgress.userId, user.id));
     const grants = await this.db.db.select().from(awardGrants).where(eq(awardGrants.userId, user.id));
     return { progress: rows, grants };
+  }
+
+  async recalculateForUser(userId: string) {
+    const published = await this.db.db.select().from(awards).where(eq(awards.status, 'PUBLISHED'));
+    const contacts = await this.db.db.execute(sql`
+      SELECT c.user_id, c.hunter_user_id, c.park_id, p.country_iso2, p.continent_code
+      FROM contacts c
+      INNER JOIN parks p ON p.id = c.park_id
+      WHERE c.validity = 'VALID'
+        AND (c.user_id = ${userId} OR c.hunter_user_id = ${userId})
+        AND c.park_id IS NOT NULL
+    `);
+    const rows = contacts.rows as Array<{ user_id: string; hunter_user_id: string | null; park_id: string; country_iso2: string; continent_code: string }>;
+    for (const award of published) {
+      const rule = (award.ruleDefinition ?? {}) as { minimumEntities?: number };
+      const requiredValue = Math.max(1, Number(rule.minimumEntities ?? 1));
+      const allowed = (country: string, continent: string) => award.allCountries
+        || award.scopeCountries.includes(country)
+        || award.scopeContinents.includes(continent)
+        || (!award.scopeCountries.length && !award.scopeContinents.length);
+      const qualifying = new Set(rows.filter((row) => {
+        if (!allowed(row.country_iso2, row.continent_code)) return false;
+        if (award.type === 'ACTIVATOR') return row.user_id === userId;
+        if (award.type === 'HUNTER') return row.hunter_user_id === userId;
+        return row.user_id === userId || row.hunter_user_id === userId;
+      }).map((row) => row.park_id));
+      const currentValue = qualifying.size;
+      const status = currentValue >= requiredValue ? 'EARNED' : 'IN_PROGRESS';
+      await this.db.db.insert(awardProgress).values({ userId, awardId: award.id, currentValue, requiredValue, status })
+        .onConflictDoUpdate({ target: [awardProgress.userId, awardProgress.awardId], set: { currentValue, requiredValue, status, updatedAt: new Date() } });
+      if (status === 'EARNED') {
+        await this.db.db.insert(awardGrants).values({ userId, awardId: award.id, awardVersion: award.version, evidenceSnapshot: { qualifyingEntities: currentValue, source: 'automatic-recalculation' } }).onConflictDoNothing();
+      }
+    }
   }
 }

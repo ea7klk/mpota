@@ -3,7 +3,7 @@ CREATE EXTENSION IF NOT EXISTS postgis;
 
 DO $$ BEGIN CREATE TYPE user_status AS ENUM ('PENDING_VERIFICATION','ACTIVE','SUSPENDED','DEACTIVATED','DELETED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE user_role AS ENUM ('MEMBER','ENTITY_ADMIN','AWARD_ADMIN','GLOBAL_ADMIN','SYSTEM_BOOTSTRAP_ADMIN'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE park_status AS ENUM ('PENDING','APPROVED','REJECTED','REMOVED','ARCHIVED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE park_status AS ENUM ('PENDING','APPROVED','RETIRED','REJECTED','REMOVED','ARCHIVED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE proposal_status AS ENUM ('PENDING','CHANGES_REQUESTED','APPROVED','REJECTED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE award_status AS ENUM ('DRAFT','PENDING_PUBLICATION','PUBLISHED','RETIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE award_type AS ENUM ('ACTIVATOR','HUNTER','COMBINED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS adif_uploads (
 );
 CREATE TABLE IF NOT EXISTS contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), upload_id uuid NOT NULL REFERENCES adif_uploads(id), user_id uuid NOT NULL REFERENCES users(id),
-  park_id uuid REFERENCES parks(id), park_reference varchar(10), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz, qso_date_utc date,
+  park_id uuid REFERENCES parks(id), hunter_user_id uuid REFERENCES users(id), park_reference varchar(10), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz, qso_date_utc date,
   frequency varchar(32), band varchar(32), mode varchar(32), validity varchar(32) NOT NULL DEFAULT 'VALID', error_message text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS contacts_daily_hunter_unique

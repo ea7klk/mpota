@@ -123,7 +123,7 @@ export class ParksController {
   @Public()
   @Get('parks/:reference')
   @ApiOperation({ summary: 'Get one approved park by reference' })
-  find(@Param('reference') reference: string) { return this.parks.findApproved(reference); }
+  find(@Param('reference') reference: string) { return this.parks.findPublic(reference); }
 
   @Public()
   @Get('parks/:reference/detail')
@@ -192,8 +192,15 @@ export class ParksController {
   @ApiBearerAuth()
   reject(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: DecisionDto) { return this.parks.reject(user, id, dto.notes); }
 
-  @Post('parks/:id/remove')
-  @Roles('GLOBAL_ADMIN')
+  @Post('admin/parks/:id/retire')
+  @Roles('ENTITY_ADMIN')
   @ApiBearerAuth()
-  remove(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: DecisionDto) { return this.parks.remove(user, id, dto.notes); }
+  @ApiOperation({ summary: 'Retire a park without deleting its historical QSOs' })
+  retire(@CurrentUser() user: AuthUser, @Param('id') id: string, @Body() dto: DecisionDto) { return this.parks.retire(user, id, dto.notes); }
+
+  @Post('admin/parks/:id/activate')
+  @Roles('ENTITY_ADMIN')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Reactivate a retired park so new QSOs can be accepted' })
+  activate(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.parks.activate(user, id); }
 }

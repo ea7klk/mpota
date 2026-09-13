@@ -57,7 +57,7 @@ export class ParksService {
   constructor(private readonly db: DbService, private readonly storage: StorageService) {}
 
   async listImages(reference: string) {
-    const park = await this.findApproved(reference);
+    const park = await this.findPublic(reference);
     const images = await this.db.db.select({
       id: parkImages.id, imageNumber: parkImages.imageNumber, originalFilename: parkImages.originalFilename,
       contentType: parkImages.contentType, sizeBytes: parkImages.sizeBytes, createdAt: parkImages.createdAt
@@ -69,14 +69,14 @@ export class ParksService {
     const [image] = await this.db.db.select({
       objectKey: parkImages.objectKey, contentType: parkImages.contentType, parkReference: parks.reference
     }).from(parkImages).innerJoin(parks, eq(parkImages.parkId, parks.id)).where(and(
-      eq(parkImages.id, imageId), eq(parks.reference, reference.toUpperCase()), eq(parks.status, 'APPROVED')
+      eq(parkImages.id, imageId), eq(parks.reference, reference.toUpperCase()), inArray(parks.status, ['APPROVED', 'RETIRED'])
     ));
     if (!image) throw new NotFoundException('Park image not found');
     return this.storage.get(image.objectKey, PARK_IMAGE_BUCKET);
   }
 
   async detail(reference: string) {
-    const park = await this.findApproved(reference);
+    const park = await this.findPublic(reference);
     const imageResult = await this.listImages(park.reference);
     const activations = await this.db.db.execute(sql`
       SELECT
@@ -179,8 +179,8 @@ export class ParksService {
       continentCode: parks.continentCode, region: parks.region, locality: parks.locality,
       latitude: parks.latitude, longitude: parks.longitude, parkType: parks.parkType,
       name: parks.name, description: parks.description, sourceUrl: parks.sourceUrl,
-      accessNotes: parks.accessNotes, photoUrl: parks.photoUrl
-    }).from(parks).where(eq(parks.status, 'APPROVED')).orderBy(parks.reference).limit(2000);
+      accessNotes: parks.accessNotes, photoUrl: parks.photoUrl, status: parks.status
+    }).from(parks).where(inArray(parks.status, ['APPROVED', 'RETIRED'])).orderBy(parks.reference).limit(2000);
   }
 
   async adminList(user: AuthUser, query: ParkAdminQuery) {
@@ -235,9 +235,9 @@ export class ParksService {
     return updated;
   }
 
-  async findApproved(reference: string) {
-    const [park] = await this.db.db.select().from(parks).where(and(eq(parks.reference, reference.toUpperCase()), eq(parks.status, 'APPROVED')));
-    if (!park) throw new NotFoundException('Approved park not found');
+  async findPublic(reference: string) {
+    const [park] = await this.db.db.select().from(parks).where(and(eq(parks.reference, reference.toUpperCase()), inArray(parks.status, ['APPROVED', 'RETIRED'])));
+    if (!park) throw new NotFoundException('Park not found');
     return park;
   }
 
@@ -374,10 +374,21 @@ export class ParksService {
     return updated;
   }
 
-  async remove(user: AuthUser, id: string, reason?: string) {
-    const [park] = await this.db.db.update(parks).set({ status: 'REMOVED', removedBy: user.id, removedAt: new Date(), removalReason: reason, updatedAt: new Date() }).where(eq(parks.id, id)).returning();
+  async retire(user: AuthUser, id: string, reason?: string) {
+    const existing = await this.adminFind(user, id);
+    if (existing.status === 'RETIRED') return existing;
+    const [park] = await this.db.db.update(parks).set({ status: 'RETIRED', removedBy: user.id, removedAt: new Date(), removalReason: reason, updatedAt: new Date() }).where(eq(parks.id, id)).returning();
     if (!park) throw new NotFoundException('Park not found');
-    await this.db.db.insert(auditEvents).values({ actorId: user.id, action: 'ENTITY_REMOVED', entityType: 'park', entityId: id, afterJson: { reason } });
+    await this.db.db.insert(auditEvents).values({ actorId: user.id, action: 'ENTITY_RETIRED', entityType: 'park', entityId: id, afterJson: { reason } });
+    return park;
+  }
+
+  async activate(user: AuthUser, id: string) {
+    const existing = await this.adminFind(user, id);
+    if (!['RETIRED', 'ARCHIVED'].includes(existing.status)) return existing;
+    const [park] = await this.db.db.update(parks).set({ status: 'APPROVED', approvedBy: user.id, approvedAt: new Date(), removedBy: null, removedAt: null, removalReason: null, updatedAt: new Date() }).where(eq(parks.id, id)).returning();
+    if (!park) throw new NotFoundException('Park not found');
+    await this.db.db.insert(auditEvents).values({ actorId: user.id, action: 'ENTITY_ACTIVATED', entityType: 'park', entityId: id });
     return park;
   }
 

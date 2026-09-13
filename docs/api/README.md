@@ -5,9 +5,13 @@ The running API publishes interactive Swagger UI at `/docs` and the OpenAPI JSON
 - <http://localhost:3000/docs>
 - <http://localhost:3000/docs-json>
 
-The API is versioned under `/api/v1` and uses bearer authentication for registered-user and administrator operations. The public map endpoint is `GET /api/v1/parks` and returns approved parks only. `GET /api/v1/parks/{reference}/detail` returns the complete public park profile, activity summary, activations, park leaders, and image metadata.
+The API is versioned under `/api/v1` and uses bearer authentication for registered-user and administrator operations. The public map endpoint is `GET /api/v1/parks` and returns approved and retired parks; retired parks remain visible for historical context and are marked as inactive. `GET /api/v1/parks/{reference}/detail` returns the complete public park profile, activity summary, activations, park leaders, and image metadata.
 
-The main domains are authentication, approved parks, park image uploads, proposals/moderation, awards, ADIF uploads, and global user administration. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
+The main domains are authentication, parks and lifecycle administration, park image uploads, proposals/moderation, awards, QSO/ADIF processing, user profiles, and global user administration. Entity admins can use `POST /api/v1/admin/parks/{id}/retire` and `POST /api/v1/admin/parks/{id}/activate` within their approval scope; parks are never deleted. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
+
+## Hunter attribution and profiles
+
+Hunter callsigns do not need to be registered for a QSO to be valid. When a user registers or adds a callsign to their profile, matching historical valid contacts that have not already been attributed are linked to that user and award progress is recalculated. New valid contacts are attributed automatically when the hunter callsign matches an active registered user. `GET /api/v1/profile` returns editable identity data, activations, hunter-park totals, and award progress; `PATCH /api/v1/profile` updates the identity and performs the historical attribution step.
 
 ## QSO logging and ADIF processing
 
@@ -22,7 +26,7 @@ The legacy `POST /api/v1/uploads/adif` route remains available, but it requires 
 
 The processor rejects malformed callsigns, invalid dates, exact duplicate QSOs, and repeated hunter callsigns in the same ADIF file. A valid hunter contact can count only once per activator, park, and UTC calendar day. Frequency is retained from either the manual entry or the ADIF `FREQ` field. Uploads progress through `RECEIVED`, `PROCESSING`, `COMPLETED`, `PARTIAL`, or `FAILED`; invalid records are retained with a reason so the user can correct and resubmit them.
 
-Registered users can upload JPEG, PNG, WebP, or GIF images with `POST /api/v1/parks/{reference}/images`. Binary files are kept in the dedicated `S3_PARK_IMAGES_BUCKET` under `CONTINENT/COUNTRY/{reference}-{serial}.{extension}`. `GET /api/v1/parks/{reference}/images` lists image metadata, and the returned image URLs serve approved-park images for thumbnails and full-size viewing.
+Registered users can upload JPEG, PNG, WebP, or GIF images with `POST /api/v1/parks/{reference}/images`. Binary files are kept in the dedicated `S3_PARK_IMAGES_BUCKET` under `CONTINENT/COUNTRY/{reference}-{serial}.{extension}`. `GET /api/v1/parks/{reference}/images` lists image metadata, and the returned image URLs serve approved- or retired-park images for thumbnails and full-size viewing.
 
 ## Local bootstrap administrator
 

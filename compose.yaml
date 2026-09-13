@@ -22,7 +22,7 @@ services:
     image: postgis/postgis:16-3.5
     environment:
       PGPASSWORD: mpota
-    command: ["sh", "-c", "set -e; psql -h postgres -U mpota -d mpota -f /migrations/002_park_images.sql; psql -h postgres -U mpota -d mpota -f /migrations/003_qso_validation.sql; psql -h postgres -U mpota -d mpota -f /migrations/004_qso_frequency.sql"]
+    command: ["sh", "-c", "set -e; psql -h postgres -U mpota -d mpota -f /migrations/002_park_images.sql; psql -h postgres -U mpota -d mpota -f /migrations/003_qso_validation.sql; psql -h postgres -U mpota -d mpota -f /migrations/004_qso_frequency.sql; psql -h postgres -U mpota -d mpota -f /migrations/005_hunter_attribution_and_retirement.sql"]
     volumes:
       - ./infra/db:/migrations:ro
     depends_on:

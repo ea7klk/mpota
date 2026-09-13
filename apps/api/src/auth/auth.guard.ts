@@ -20,10 +20,10 @@ export class AuthGuard implements CanActivate {
       const result = keycloak
         ? await jwtVerify(token, this.keycloakKeys!, { issuer: process.env.KEYCLOAK_ISSUER, audience: process.env.KEYCLOAK_AUDIENCE })
         : await jwtVerify(token, new TextEncoder().encode(process.env.JWT_SECRET ?? 'dev-only-secret'));
-      const payload = result.payload as typeof result.payload & { realm_access?: { roles?: string[] }; preferred_username?: string; name?: string; displayName?: string; role?: string; locale?: string };
+      const payload = result.payload as typeof result.payload & { realm_access?: { roles?: string[] }; preferred_username?: string; name?: string; displayName?: string; callsign?: string; role?: string; locale?: string };
       const validRoles = ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN'];
       const role = (keycloak ? payload.realm_access?.roles?.find((candidate) => validRoles.includes(candidate)) : payload.role && validRoles.includes(payload.role) ? payload.role : undefined) ?? 'MEMBER';
-      request.user = { id: payload.sub!, email: String(payload.email ?? payload.preferred_username ?? ''), displayName: String(payload.displayName ?? payload.name ?? payload.preferred_username ?? ''), role, locale: String(payload.locale ?? 'en') } satisfies AuthUser;
+      request.user = { id: payload.sub!, email: String(payload.email ?? payload.preferred_username ?? ''), displayName: String(payload.displayName ?? payload.name ?? payload.preferred_username ?? ''), callsign: payload.callsign ? String(payload.callsign) : undefined, role, locale: String(payload.locale ?? 'en') } satisfies AuthUser;
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

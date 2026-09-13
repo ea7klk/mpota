@@ -1,15 +1,16 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
-import { eq } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import { SignJWT } from 'jose';
 import * as bcrypt from 'bcryptjs';
 import { DbService } from '../db/db.service';
-import { users } from '../db/schema';
+import { contacts, users } from '../db/schema';
+import { AwardsService } from '../awards/awards.service';
 
-export type AuthInput = { id: string; email: string; displayName: string; role: string; locale: string };
+export type AuthInput = { id: string; email: string; displayName: string; callsign?: string | null; role: string; locale: string };
 
 @Injectable()
 export class AuthService implements OnModuleInit {
-  constructor(private readonly db: DbService) {}
+  constructor(private readonly db: DbService, private readonly awards: AwardsService) {}
 
   async onModuleInit() {
     const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
@@ -47,14 +48,24 @@ export class AuthService implements OnModuleInit {
     if (existing.length) throw new ConflictException('Email already registered');
     const bootstrap = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
     const role = bootstrap && email === bootstrap ? 'GLOBAL_ADMIN' : 'MEMBER';
-    const [created] = await this.db.db.insert(users).values({
-      email,
-      passwordHash: await bcrypt.hash(input.password, 12),
-      displayName: input.displayName.trim(),
-      callsign: input.callsign?.trim().toUpperCase(),
-      locale: input.locale ?? 'en',
-      role
-    }).returning({ id: users.id, email: users.email, displayName: users.displayName, role: users.role, locale: users.locale });
+    const callsign = input.callsign?.trim().toUpperCase() || null;
+    if (callsign) {
+      const [matchingUser] = await this.db.db.select({ id: users.id }).from(users).where(sql`upper(${users.callsign}) = ${callsign}`);
+      if (matchingUser) throw new ConflictException('Callsign already registered');
+    }
+    const created = await this.db.db.transaction(async (tx) => {
+      const [inserted] = await tx.insert(users).values({
+        email,
+        passwordHash: await bcrypt.hash(input.password, 12),
+        displayName: input.displayName.trim(),
+        callsign,
+        locale: input.locale ?? 'en',
+        role
+      }).returning({ id: users.id, email: users.email, displayName: users.displayName, callsign: users.callsign, role: users.role, locale: users.locale });
+      if (callsign) await tx.update(contacts).set({ hunterUserId: inserted.id }).where(and(isNull(contacts.hunterUserId), sql`upper(${contacts.qsoCallsign}) = ${callsign}`, eq(contacts.validity, 'VALID')));
+      return inserted;
+    });
+    await this.awards.recalculateForUser(created.id);
     return { user: created, accessToken: await this.tokenFor(created) };
   }
 
@@ -65,7 +76,7 @@ export class AuthService implements OnModuleInit {
     if (!user || user.status !== 'ACTIVE' || !(await bcrypt.compare(password, user.passwordHash))) {
       throw new UnauthorizedException('Invalid credentials');
     }
-    const safe = { id: user.id, email: user.email, displayName: user.displayName, role: user.role, locale: user.locale };
+    const safe = { id: user.id, email: user.email, displayName: user.displayName, callsign: user.callsign, role: user.role, locale: user.locale };
     return { user: safe, accessToken: await this.tokenFor(safe) };
   }
 }

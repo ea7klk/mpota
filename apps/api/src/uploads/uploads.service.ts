@@ -1,11 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull, ne } from 'drizzle-orm';
+import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { adifUploads, contacts, parks } from '../db/schema';
+import { adifUploads, contacts, parks, users } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
 import { EventsService } from '../events/events.service';
 import { StorageService } from './storage.service';
+import { AwardsService } from '../awards/awards.service';
 
 type AdifRecord = Record<string, string>;
 type QsoInput = { parkReference: string; qsoCallsign: string; qsoDatetime: Date; frequency?: string; band?: string; mode?: string };
@@ -39,7 +40,7 @@ function isUniqueViolation(error: unknown) {
 
 @Injectable()
 export class UploadsService {
-  constructor(private readonly db: DbService, private readonly storage: StorageService, private readonly events: EventsService) {}
+  constructor(private readonly db: DbService, private readonly storage: StorageService, private readonly events: EventsService, private readonly awards: AwardsService) {}
 
   async upload(user: AuthUser, file: Express.Multer.File, parkReference: string) {
     if (!file || !/\.(adi|adif)$/i.test(file.originalname)) throw new BadRequestException('Upload an .adi or .adif file');
@@ -71,6 +72,8 @@ export class UploadsService {
     }).returning();
     const result = await this.storeQso(upload.id, user, { ...input, parkReference: park.reference, qsoDatetime });
     await this.finishUpload(upload.id, 1, result.accepted ? 1 : 0, result.accepted ? 0 : 1);
+    await this.awards.recalculateForUser(user.id);
+    if (result.accepted) await this.recalculateAttributedHunters(upload.id);
     return { ...result, uploadId: upload.id, parkReference: park.reference };
   }
 
@@ -121,6 +124,8 @@ export class UploadsService {
         else errorCount += 1;
       }
       await this.finishUpload(uploadId, records.length, validCount, errorCount);
+      await this.awards.recalculateForUser(user.id);
+      await this.recalculateAttributedHunters(uploadId);
       await this.events.publish('mpota.adif.processed', { uploadId, userId: user.id, parkReference: park.reference, contactCount: records.length, validCount, errorCount });
     } catch (error) {
       await this.db.db.update(adifUploads).set({ status: 'FAILED', processedAt: new Date() }).where(eq(adifUploads.id, uploadId));
@@ -133,6 +138,7 @@ export class UploadsService {
     const qsoCallsign = normalizeCallsign(input.qsoCallsign);
     if (!/^[A-Z0-9./-]{3,32}$/.test(qsoCallsign)) return this.storeRejectedQso(uploadId, user, park, qsoCallsign || 'UNKNOWN', input.qsoDatetime, input.frequency, input.band, input.mode, 'INVALID_CALLSIGN', 'Hunter callsign is invalid');
     const qsoDateUtc = utcDay(input.qsoDatetime);
+    const [hunter] = await this.db.db.select({ id: users.id }).from(users).where(and(eq(users.status, 'ACTIVE'), sql`upper(${users.callsign}) = ${qsoCallsign}`));
     const [exact] = await this.db.db.select({ id: contacts.id }).from(contacts).where(and(
       eq(contacts.userId, user.id), eq(contacts.parkId, park.id), eq(contacts.qsoCallsign, qsoCallsign),
       eq(contacts.qsoDatetime, input.qsoDatetime), input.band ? eq(contacts.band, input.band) : isNull(contacts.band),
@@ -143,7 +149,7 @@ export class UploadsService {
     try {
       const [contact] = await this.db.db.insert(contacts).values({
         uploadId, userId: user.id, parkId: park.id, parkReference: park.reference, qsoCallsign,
-        qsoDatetime: input.qsoDatetime, qsoDateUtc, frequency: input.frequency, band: input.band, mode: input.mode, validity: 'VALID'
+        qsoDatetime: input.qsoDatetime, qsoDateUtc, frequency: input.frequency, band: input.band, mode: input.mode, hunterUserId: hunter?.id, validity: 'VALID'
       }).returning({ id: contacts.id });
       return { accepted: true, contactId: contact.id, validity: 'VALID' };
     } catch (error) {
@@ -172,6 +178,11 @@ export class UploadsService {
     return this.db.db.update(adifUploads).set({
       status: errorCount ? 'PARTIAL' : 'COMPLETED', contactCount, validCount, errorCount, processedAt: new Date()
     }).where(eq(adifUploads.id, uploadId));
+  }
+
+  private async recalculateAttributedHunters(uploadId: string) {
+    const rows = await this.db.db.select({ hunterUserId: contacts.hunterUserId }).from(contacts).where(and(eq(contacts.uploadId, uploadId), ne(contacts.validity, 'INVALID_PARK')));
+    for (const hunter of new Set(rows.map((row) => row.hunterUserId).filter((id): id is string => Boolean(id)))) await this.awards.recalculateForUser(hunter);
   }
 
   private async approvedPark(reference: string) {

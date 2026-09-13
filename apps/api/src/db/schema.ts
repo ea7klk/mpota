@@ -3,7 +3,7 @@ import { boolean, date, geometry, integer, jsonb, numeric, pgEnum, pgTable, text
 
 export const userStatus = pgEnum('user_status', ['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'DEACTIVATED', 'DELETED']);
 export const userRole = pgEnum('user_role', ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN']);
-export const parkStatus = pgEnum('park_status', ['PENDING', 'APPROVED', 'REJECTED', 'REMOVED', 'ARCHIVED']);
+export const parkStatus = pgEnum('park_status', ['PENDING', 'APPROVED', 'RETIRED', 'REJECTED', 'REMOVED', 'ARCHIVED']);
 export const proposalStatus = pgEnum('proposal_status', ['PENDING', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED']);
 export const awardStatus = pgEnum('award_status', ['DRAFT', 'PENDING_PUBLICATION', 'PUBLISHED', 'RETIRED']);
 export const awardType = pgEnum('award_type', ['ACTIVATOR', 'HUNTER', 'COMBINED']);
@@ -168,6 +168,7 @@ export const contacts = pgTable('contacts', {
   uploadId: uuid('upload_id').notNull().references(() => adifUploads.id),
   userId: uuid('user_id').notNull().references(() => users.id),
   parkId: uuid('park_id').references(() => parks.id),
+  hunterUserId: uuid('hunter_user_id').references(() => users.id),
   parkReference: varchar('park_reference', { length: 10 }),
   qsoCallsign: varchar('qso_callsign', { length: 32 }).notNull(),
   qsoDatetime: timestamp('qso_datetime'),
