@@ -13,6 +13,8 @@ The main domains are authentication, approved parks, proposals/moderation, award
 
 The API can create one idempotent local bootstrap administrator at startup when all bootstrap environment values are configured. The account is created only when its email does not already exist; an existing account is never overwritten.
 
+Local passwords must contain at least 8 characters.
+
 ```text
 BOOTSTRAP_ADMIN_EMAIL=operator@example.org
 BOOTSTRAP_ADMIN_PASSWORD=use-a-secret

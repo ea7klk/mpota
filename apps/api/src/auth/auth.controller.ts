@@ -9,8 +9,8 @@ import { AuthUser } from './auth.types';
 class RegisterDto {
   @ApiProperty({ example: 'operator@example.org', format: 'email' })
   @IsEmail() email!: string;
-  @ApiProperty({ example: 'correct-horse-battery-staple', minLength: 10 })
-  @IsString() @MinLength(10) password!: string;
+  @ApiProperty({ example: 'correct-horse-battery-staple', minLength: 8 })
+  @IsString() @MinLength(8) password!: string;
   @ApiProperty({ example: 'Jane Operator', minLength: 2 })
   @IsString() @MinLength(2) displayName!: string;
   @ApiPropertyOptional({ example: 'EA7KLK' })
