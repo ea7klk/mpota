@@ -23,11 +23,16 @@ export class UsersService {
     if (!profile) throw new NotFoundException('User profile not found');
     await this.awards.recalculateForUser(user.id);
     const activations = await this.db.db.execute(sql`
-      SELECT p.reference, p.name, COUNT(DISTINCT COALESCE(c.qso_datetime::date, u.uploaded_at::date))::int AS activations,
-        COUNT(*)::int AS qsos, MAX(COALESCE(c.qso_datetime, u.uploaded_at))::text AS last_activity
-      FROM contacts c INNER JOIN parks p ON p.id = c.park_id INNER JOIN adif_uploads u ON u.id = c.upload_id
-      WHERE c.user_id = ${user.id} AND c.validity = 'VALID'
-      GROUP BY p.id, p.reference, p.name ORDER BY last_activity DESC
+      WITH activation_groups AS (
+        SELECT c.park_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date) AS activation_date, COUNT(*)::int AS qso_count
+        FROM contacts c INNER JOIN adif_uploads u ON u.id = c.upload_id
+        WHERE c.user_id = ${user.id} AND c.validity = 'VALID'
+        GROUP BY c.park_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)
+      )
+      SELECT p.reference, p.name, activation_date::text AS date, qso_count AS qsos,
+        CASE WHEN qso_count >= 10 THEN 'VALID' ELSE 'FAILED' END AS status
+      FROM activation_groups INNER JOIN parks p ON p.id = activation_groups.park_id
+      ORDER BY activation_date DESC
     `);
     const hunterSummary = await this.db.db.execute(sql`
       SELECT COUNT(*)::int AS total_qsos, COUNT(DISTINCT c.park_id)::int AS parks,

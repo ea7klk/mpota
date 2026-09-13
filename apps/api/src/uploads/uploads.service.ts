@@ -1,8 +1,8 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { and, desc, eq, isNull, ne, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, ne, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { adifUploads, contacts, parks, users } from '../db/schema';
+import { adifUploads, auditEvents, contacts, parks, users } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
 import { EventsService } from '../events/events.service';
 import { StorageService } from './storage.service';
@@ -11,6 +11,8 @@ import { AwardsService } from '../awards/awards.service';
 type AdifRecord = Record<string, string>;
 type QsoInput = { parkReference: string; qsoCallsign: string; qsoDatetime: Date; frequency?: string; band?: string; mode?: string };
 type QsoResult = { accepted: boolean; contactId: string; validity: string; errorMessage?: string };
+export type AdminActivationQuery = { date?: string; activatorCallsign?: string; parkReference?: string };
+export type DeleteActivationInput = { date: string; activatorId: string; parkReference: string };
 
 function parseAdif(text: string): AdifRecord[] {
   return text.split(/<eor\s*>/i).map((chunk) => {
@@ -99,6 +101,76 @@ export class UploadsService {
       qsoDateUtc: contacts.qsoDateUtc, frequency: contacts.frequency, band: contacts.band, mode: contacts.mode,
       validity: contacts.validity, errorMessage: contacts.errorMessage
     }).from(contacts).where(and(eq(contacts.uploadId, uploadId), ne(contacts.validity, 'VALID'))).orderBy(contacts.qsoDatetime);
+  }
+
+  async adminActivationList(query: AdminActivationQuery) {
+    const dateExpression = sql`COALESCE(c.qso_date_utc, c.qso_datetime::date, au.uploaded_at::date)`;
+    const dateFilter = query.date ? sql`AND ${dateExpression} = ${query.date}::date` : sql``;
+    const callsignFilter = query.activatorCallsign?.trim() ? sql`AND COALESCE(NULLIF(activator.callsign, ''), activator.display_name) ILIKE ${`%${query.activatorCallsign.trim()}%`}` : sql``;
+    const parkFilter = query.parkReference?.trim() ? sql`AND p.reference ILIKE ${`%${query.parkReference.trim().toUpperCase()}%`}` : sql``;
+    const result = await this.db.db.execute(sql`
+      SELECT c.user_id AS activator_id,
+        p.reference AS park_reference,
+        p.name AS park_name,
+        ${dateExpression}::text AS activation_date,
+        COALESCE(NULLIF(activator.callsign, ''), activator.display_name) AS activator_callsign,
+        COUNT(*) FILTER (WHERE c.validity = 'VALID')::int AS valid_qsos,
+        COUNT(*)::int AS total_qsos,
+        CASE WHEN COUNT(*) FILTER (WHERE c.validity = 'VALID') >= 10 THEN 'VALID' ELSE 'FAILED' END AS status
+      FROM contacts c
+      INNER JOIN adif_uploads au ON au.id = c.upload_id
+      INNER JOIN parks p ON p.id = c.park_id
+      INNER JOIN users activator ON activator.id = c.user_id
+      WHERE c.park_id IS NOT NULL ${dateFilter} ${callsignFilter} ${parkFilter}
+      GROUP BY c.user_id, p.reference, p.name, ${dateExpression}, activator.callsign, activator.display_name
+      HAVING COUNT(*) FILTER (WHERE c.validity = 'VALID') > 0
+      ORDER BY ${dateExpression} DESC, p.reference, activator_callsign
+    `);
+    return result.rows;
+  }
+
+  async deleteActivation(input: DeleteActivationInput, actor: AuthUser) {
+    const reference = input.parkReference.trim().toUpperCase();
+    const [park] = await this.db.db.select({ id: parks.id, reference: parks.reference }).from(parks).where(eq(parks.reference, reference));
+    if (!park) throw new NotFoundException('Park not found');
+
+    const dayExpression = sql`COALESCE(${contacts.qsoDateUtc}, ${contacts.qsoDatetime}::date, ${adifUploads.uploadedAt}::date)`;
+    const matching = await this.db.db.select({ id: contacts.id, uploadId: contacts.uploadId, userId: contacts.userId, hunterUserId: contacts.hunterUserId })
+      .from(contacts)
+      .innerJoin(adifUploads, eq(contacts.uploadId, adifUploads.id))
+      .where(and(eq(contacts.userId, input.activatorId), eq(contacts.parkId, park.id), sql`${dayExpression} = ${input.date}::date`));
+    if (!matching.length) return { deletedCount: 0, activatorId: input.activatorId, parkReference: park.reference, activationDate: input.date };
+
+    const contactIds = matching.map((row) => row.id);
+    const uploadIds = [...new Set(matching.map((row) => row.uploadId))];
+    const affectedUsers = new Set([input.activatorId, ...matching.map((row) => row.hunterUserId).filter((id): id is string => Boolean(id))]);
+    await this.db.db.delete(contacts).where(inArray(contacts.id, contactIds));
+
+    for (const uploadId of uploadIds) {
+      const counts = await this.db.db.execute(sql`
+        SELECT COUNT(*)::int AS contact_count,
+          COUNT(*) FILTER (WHERE validity = 'VALID')::int AS valid_count,
+          COUNT(*) FILTER (WHERE validity <> 'VALID')::int AS error_count
+        FROM contacts WHERE upload_id = ${uploadId}
+      `);
+      const row = counts.rows[0] as { contact_count: number; valid_count: number; error_count: number };
+      await this.db.db.update(adifUploads).set({
+        contactCount: row.contact_count,
+        validCount: row.valid_count,
+        errorCount: row.error_count,
+        status: row.error_count === 0 && row.contact_count > 0 ? 'COMPLETED' : 'PARTIAL'
+      }).where(eq(adifUploads.id, uploadId));
+    }
+
+    await this.db.db.insert(auditEvents).values({
+      actorId: actor.id,
+      action: 'QSOS_DELETED_FOR_ACTIVATION',
+      entityType: 'park_activation',
+      entityId: park.id,
+      beforeJson: { activatorId: input.activatorId, parkReference: park.reference, activationDate: input.date, deletedCount: contactIds.length, uploadIds }
+    });
+    for (const userId of affectedUsers) await this.awards.recalculateForUser(userId);
+    return { deletedCount: contactIds.length, activatorId: input.activatorId, parkReference: park.reference, activationDate: input.date };
   }
 
   private async processAdif(uploadId: string, user: AuthUser, park: typeof parks.$inferSelect, buffer: Buffer) {

@@ -80,38 +80,52 @@ export class ParksService {
     const imageResult = await this.listImages(park.reference);
     const activations = await this.db.db.execute(sql`
       SELECT
-        COALESCE(c.qso_datetime::date, u.uploaded_at::date)::text AS date,
+        COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)::text AS date,
         COALESCE(NULLIF(uploader.callsign, ''), uploader.display_name) AS callsign,
         COUNT(*)::int AS total_qsos,
         COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) = 'CW')::int AS cw,
         COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) IN ('SSB', 'AM', 'FM', 'USB', 'LSB', 'PHONE'))::int AS phone,
-        COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) NOT IN ('CW', 'SSB', 'AM', 'FM', 'USB', 'LSB', 'PHONE'))::int AS data
+        COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) NOT IN ('CW', 'SSB', 'AM', 'FM', 'USB', 'LSB', 'PHONE'))::int AS data,
+        CASE WHEN COUNT(*) >= 10 THEN 'VALID' ELSE 'FAILED' END AS status
       FROM contacts c
       INNER JOIN adif_uploads u ON u.id = c.upload_id
       INNER JOIN users uploader ON uploader.id = c.user_id
       WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
-      GROUP BY 1, 2
+      GROUP BY c.user_id, 1, 2
       ORDER BY date DESC, total_qsos DESC
       LIMIT 100
     `);
     const summary = await this.db.db.execute(sql`
       SELECT
-        COUNT(DISTINCT COALESCE(c.qso_datetime::date, u.uploaded_at::date))::int AS activation_count,
-        COUNT(*)::int AS total_qsos,
-        MIN(COALESCE(c.qso_datetime::date, u.uploaded_at::date))::text AS first_activation
-      FROM contacts c
-      INNER JOIN adif_uploads u ON u.id = c.upload_id
-      WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+        COUNT(*) FILTER (WHERE qso_count >= 10)::int AS activation_count,
+        SUM(qso_count)::int AS total_qsos,
+        MIN(activation_date) FILTER (WHERE qso_count >= 10)::text AS first_activation
+      FROM (
+        SELECT c.user_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date) AS activation_date, COUNT(*)::int AS qso_count
+        FROM contacts c
+        INNER JOIN adif_uploads u ON u.id = c.upload_id
+        WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+        GROUP BY c.user_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)
+      ) activation_groups
     `);
     const activatorLeaders = await this.db.db.execute(sql`
+      WITH qualifying_activations AS (
+        SELECT c.user_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date) AS activation_date
+        FROM contacts c
+        INNER JOIN adif_uploads u ON u.id = c.upload_id
+        WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+        GROUP BY c.user_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)
+        HAVING COUNT(*) >= 10
+      )
       SELECT
         COALESCE(NULLIF(uploader.callsign, ''), uploader.display_name) AS callsign,
         uploader.display_name,
-        COUNT(DISTINCT COALESCE(c.qso_datetime::date, u.uploaded_at::date))::int AS activations,
+        COUNT(DISTINCT qa.activation_date)::int AS activations,
         COUNT(*)::int AS qsos
       FROM contacts c
       INNER JOIN adif_uploads u ON u.id = c.upload_id
       INNER JOIN users uploader ON uploader.id = c.user_id
+      INNER JOIN qualifying_activations qa ON qa.user_id = c.user_id AND qa.activation_date = COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)
       WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
       GROUP BY uploader.id, uploader.callsign, uploader.display_name
       ORDER BY activations DESC, qsos DESC, callsign

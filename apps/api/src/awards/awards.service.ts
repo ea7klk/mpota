@@ -51,14 +51,24 @@ export class AwardsService {
   async recalculateForUser(userId: string) {
     const published = await this.db.db.select().from(awards).where(eq(awards.status, 'PUBLISHED'));
     const contacts = await this.db.db.execute(sql`
-      SELECT c.user_id, c.hunter_user_id, c.park_id, p.country_iso2, p.continent_code
+      SELECT c.user_id, c.hunter_user_id, c.park_id, p.country_iso2, p.continent_code,
+        COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)::text AS activation_date
       FROM contacts c
       INNER JOIN parks p ON p.id = c.park_id
+      INNER JOIN adif_uploads u ON u.id = c.upload_id
       WHERE c.validity = 'VALID'
         AND (c.user_id = ${userId} OR c.hunter_user_id = ${userId})
         AND c.park_id IS NOT NULL
     `);
-    const rows = contacts.rows as Array<{ user_id: string; hunter_user_id: string | null; park_id: string; country_iso2: string; continent_code: string }>;
+    const rows = contacts.rows as Array<{ user_id: string; hunter_user_id: string | null; park_id: string; country_iso2: string; continent_code: string; activation_date: string }>;
+    const activationCounts = new Map<string, number>();
+    for (const row of rows) {
+      if (row.user_id === userId) {
+        const key = `${row.user_id}:${row.park_id}:${row.activation_date}`;
+        activationCounts.set(key, (activationCounts.get(key) ?? 0) + 1);
+      }
+    }
+    const qualifyingActivations = new Set([...activationCounts.entries()].filter(([, count]) => count >= 10).map(([key]) => key));
     for (const award of published) {
       const rule = (award.ruleDefinition ?? {}) as { minimumEntities?: number };
       const requiredValue = Math.max(1, Number(rule.minimumEntities ?? 1));
@@ -68,9 +78,10 @@ export class AwardsService {
         || (!award.scopeCountries.length && !award.scopeContinents.length);
       const qualifying = new Set(rows.filter((row) => {
         if (!allowed(row.country_iso2, row.continent_code)) return false;
-        if (award.type === 'ACTIVATOR') return row.user_id === userId;
+        const activationKey = `${row.user_id}:${row.park_id}:${row.activation_date}`;
+        if (award.type === 'ACTIVATOR') return row.user_id === userId && qualifyingActivations.has(activationKey);
         if (award.type === 'HUNTER') return row.hunter_user_id === userId;
-        return row.user_id === userId || row.hunter_user_id === userId;
+        return (row.user_id === userId && qualifyingActivations.has(activationKey)) || row.hunter_user_id === userId;
       }).map((row) => row.park_id));
       const currentValue = qualifying.size;
       const status = currentValue >= requiredValue ? 'EARNED' : 'IN_PROGRESS';

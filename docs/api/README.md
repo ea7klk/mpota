@@ -26,6 +26,8 @@ The legacy `POST /api/v1/uploads/adif` route remains available, but it requires 
 
 The processor rejects malformed callsigns, invalid dates, exact duplicate QSOs, and repeated hunter callsigns in the same ADIF file. A valid hunter contact can count only once per activator, park, and UTC calendar day. Frequency is retained from either the manual entry or the ADIF `FREQ` field. Uploads progress through `RECEIVED`, `PROCESSING`, `COMPLETED`, `PARTIAL`, or `FAILED`; invalid records are retained with a reason so the user can correct and resubmit them.
 
+An activation is evaluated per activator, park, and UTC date. It is `VALID` for activator credit only when it contains at least 10 valid QSOs; otherwise it remains listed as `FAILED` and contributes no activator credit. Valid hunter QSOs are not discarded when an activation fails, so hunters still receive credit for those contacts. Global administrators can audit these groups with `GET /api/v1/admin/qsos/activations`, filtering by UTC date, partial activator callsign, or partial entity reference, and can remove all QSOs for one exact activation with `DELETE /api/v1/admin/qsos/activations?date=YYYY-MM-DD&activatorId=UUID&parkReference=MPES-00001`. The deletion is audited and recalculates affected award progress; upload metadata is retained.
+
 Registered users can upload JPEG, PNG, WebP, or GIF images with `POST /api/v1/parks/{reference}/images`. Binary files are kept in the dedicated `S3_PARK_IMAGES_BUCKET` under `CONTINENT/COUNTRY/{reference}-{serial}.{extension}`. `GET /api/v1/parks/{reference}/images` lists image metadata, and the returned image URLs serve approved- or retired-park images for thumbnails and full-size viewing.
 
 ## Local bootstrap administrator

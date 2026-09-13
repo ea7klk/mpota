@@ -22,11 +22,15 @@ async function evaluate(db: Pool, event: ProcessedEvent) {
   for (const userId of userIds) {
     for (const award of published) {
       const required = Number((award.rule_definition as { minimumEntities?: number }).minimumEntities ?? 1);
-      const participantCondition = award.type === 'ACTIVATOR' ? 'c.user_id = $1' : award.type === 'HUNTER' ? 'c.hunter_user_id = $1' : '(c.user_id = $1 OR c.hunter_user_id = $1)';
-      const { rows } = await db.query(`SELECT COUNT(DISTINCT c.park_id)::int AS value
-        FROM contacts c INNER JOIN parks p ON p.id = c.park_id
-        WHERE ${participantCondition} AND c.validity = 'VALID' AND c.park_id IS NOT NULL
-          AND ($4 OR ((cardinality($2::text[]) = 0 AND cardinality($3::text[]) = 0) OR p.country_iso2 = ANY($2::text[]) OR p.continent_code = ANY($3::text[])))`,
+      const qualifyingParks = award.type === 'ACTIVATOR'
+        ? `SELECT c.park_id FROM contacts c WHERE c.user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL AND c.qso_date_utc IS NOT NULL GROUP BY c.user_id, c.park_id, c.qso_date_utc HAVING COUNT(*) >= 10`
+        : award.type === 'HUNTER'
+          ? `SELECT DISTINCT c.park_id FROM contacts c WHERE c.hunter_user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL`
+          : `SELECT c.park_id FROM contacts c WHERE c.user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL AND c.qso_date_utc IS NOT NULL GROUP BY c.user_id, c.park_id, c.qso_date_utc HAVING COUNT(*) >= 10 UNION SELECT DISTINCT c.park_id FROM contacts c WHERE c.hunter_user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL`;
+      const { rows } = await db.query(`WITH qualifying_parks AS (${qualifyingParks})
+        SELECT COUNT(DISTINCT qp.park_id)::int AS value
+        FROM qualifying_parks qp INNER JOIN parks p ON p.id = qp.park_id
+        WHERE ($4 OR ((cardinality($2::text[]) = 0 AND cardinality($3::text[]) = 0) OR p.country_iso2 = ANY($2::text[]) OR p.continent_code = ANY($3::text[])))`,
         [userId, award.scope_countries ?? [], award.scope_continents ?? [], award.all_countries ?? false]);
       const current = Number(rows[0]?.value ?? 0);
       await db.query(`INSERT INTO award_progress (user_id, award_id, current_value, required_value, status, updated_at)
