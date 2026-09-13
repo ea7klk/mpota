@@ -28,7 +28,7 @@ services:
     # Quay's current manifest is not resolved as linux/arm64/v8 by some
     # Docker Desktop versions; Docker Desktop will emulate amd64 locally.
     platform: linux/amd64
-    image: quay.io/minio/minio:latest
+    image: quay.io/minio/minio@sha256:a1a8bd4ac40ad7881a245bab97323e18f971e4d4cba2c2007ec1bedd21cbaba2
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: minio
@@ -40,7 +40,7 @@ services:
   keycloak:
     # Keep local startup compatible with Docker Desktop ARM64 resolver versions.
     platform: linux/amd64
-    image: quay.io/keycloak/keycloak:26.3
+    image: quay.io/keycloak/keycloak@sha256:e5e169f6ef82b06d2f5b08e9ac80e6a6335900360f0767e04d6810a9b4bc3590
     command: start-dev
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -67,7 +67,7 @@ services:
     # TileServer GL is also run as amd64 on Apple Silicon when ARM resolution
     # is unavailable; production already targets linux/amd64.
     platform: linux/amd64
-    image: maptiler/tileserver-gl:latest
+    image: maptiler/tileserver-gl@sha256:f5f954587478ca6be606f834fba1880b5ddd9c958132ded79a573bc1790a8bf0
     ports: ["8080:8080"]
     volumes:
       - mpota-tile-data:/data:ro
