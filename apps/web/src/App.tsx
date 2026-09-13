@@ -57,7 +57,7 @@ function SiteTopbar({ nav, activeTab, locale, user, t, onLocaleChange, onNavigat
   return <header className="topbar"><div className="brand"><img className="header-banner" src="/mpota-logo-banner.svg" alt="MPOTA — Municipal Parks On The Air" /></div><nav>{nav.map((item) => <button className={(activeTab === item.id || (activeTab === 'park-editor' && item.id === 'park-admin')) ? 'nav-active' : ''} key={item.id} onClick={() => onNavigate(item.id)}>{item.label}</button>)}</nav><div className="header-actions"><select aria-label={t.language} value={locale} onChange={(event) => onLocaleChange(event.target.value as Locale)}><option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option></select>{user ? <><button className="user-pill" onClick={() => onNavigate('profile')}>{user.callsign || user.displayName}</button><button className="button ghost" onClick={onSignOut}>{t.signOut}</button></> : <><button className="button ghost" onClick={onSignIn}>{t.signIn}</button><button className="button" onClick={onRegister}>{t.register}</button></>}</div></header>;
 }
 
-function MapView({ parks, picking, selectedPoint, view, t, onPick, onViewChange, onParkSelect, onVisibleParksChange, onViewportChange }: { parks: Park[]; picking: boolean; selectedPoint?: Coordinates; view: MapViewState; t: Record<string, string>; onPick: (lat: number, lon: number) => void; onViewChange: (view: MapViewState) => void; onParkSelect: (park: Park) => void; onVisibleParksChange: (parks: Park[]) => void; onViewportChange?: (bounds: L.LatLngBounds) => void }) {
+function MapView({ parks, picking, selectedPoint, view, t, onPick, onViewChange, onParkSelect, onVisibleParksChange, onViewportChange, onLocationError }: { parks: Park[]; picking: boolean; selectedPoint?: Coordinates; view: MapViewState; t: Record<string, string>; onPick: (lat: number, lon: number) => void; onViewChange: (view: MapViewState) => void; onParkSelect: (park: Park) => void; onVisibleParksChange: (parks: Park[]) => void; onViewportChange?: (bounds: L.LatLngBounds) => void; onLocationError?: (message: string) => void }) {
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const parksLayer = useRef<L.MarkerClusterGroup | null>(null);
@@ -68,10 +68,11 @@ function MapView({ parks, picking, selectedPoint, view, t, onPick, onViewChange,
   const onParkSelectRef = useRef(onParkSelect);
   const onVisibleParksChangeRef = useRef(onVisibleParksChange);
   const onViewportChangeRef = useRef(onViewportChange);
+  const onLocationErrorRef = useRef(onLocationError);
   const parksRef = useRef(parks);
   const tRef = useRef(t);
   const initialViewRef = useRef(view);
-  useEffect(() => { pickingRef.current = picking; onPickRef.current = onPick; onViewChangeRef.current = onViewChange; onParkSelectRef.current = onParkSelect; onVisibleParksChangeRef.current = onVisibleParksChange; onViewportChangeRef.current = onViewportChange; parksRef.current = parks; tRef.current = t; }, [picking, onPick, onViewChange, onParkSelect, onVisibleParksChange, onViewportChange, parks, t]);
+  useEffect(() => { pickingRef.current = picking; onPickRef.current = onPick; onViewChangeRef.current = onViewChange; onParkSelectRef.current = onParkSelect; onVisibleParksChangeRef.current = onVisibleParksChange; onViewportChangeRef.current = onViewportChange; onLocationErrorRef.current = onLocationError; parksRef.current = parks; tRef.current = t; }, [picking, onPick, onViewChange, onParkSelect, onVisibleParksChange, onViewportChange, onLocationError, parks, t]);
   const updateVisibleParks = () => {
     if (!map.current) return;
     const bounds = map.current.getBounds();
@@ -106,24 +107,44 @@ function MapView({ parks, picking, selectedPoint, view, t, onPick, onViewChange,
       button.textContent = '⌖';
       button.title = tRef.current.goToLocation;
       button.setAttribute('aria-label', tRef.current.goToLocation);
+      button.setAttribute('aria-busy', 'false');
       L.DomEvent.disableClickPropagation(button);
-      L.DomEvent.on(button, 'click', () => {
+      L.DomEvent.on(button, 'click', (event) => {
+        L.DomEvent.stop(event);
         if (!navigator.geolocation) {
           button.title = tRef.current.geolocationUnavailable;
+          onLocationErrorRef.current?.(tRef.current.geolocationUnavailable);
+          return;
+        }
+        if (window.location.protocol === 'http:' && !['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname)) {
+          const message = `${tRef.current.locationPermissionUnavailable} (HTTPS is required outside localhost).`;
+          button.title = message;
+          onLocationErrorRef.current?.(message);
           return;
         }
         button.classList.add('is-loading');
+        button.setAttribute('aria-busy', 'true');
         button.title = tRef.current.findingLocation;
         navigator.geolocation.getCurrentPosition(
           ({ coords }) => {
             button.classList.remove('is-loading');
+            button.setAttribute('aria-busy', 'false');
             button.title = tRef.current.goToLocation;
-            // Leaflet zoom 14 shows approximately a 5 km neighborhood at typical MPOTA latitudes.
-            map.current?.setView([coords.latitude, coords.longitude], 14);
+            const center = L.latLng(coords.latitude, coords.longitude);
+            const metersPerDegree = 111320;
+            const halfHeight = 5000 / metersPerDegree;
+            const halfWidth = 5000 / (metersPerDegree * Math.max(Math.cos(center.lat * Math.PI / 180), 0.2));
+            const bounds = L.latLngBounds(
+              [Math.max(-90, center.lat - halfHeight), center.lng - halfWidth],
+              [Math.min(90, center.lat + halfHeight), center.lng + halfWidth]
+            );
+            map.current?.fitBounds(bounds, { animate: false, padding: [8, 8] });
           },
-          () => {
+          (error) => {
             button.classList.remove('is-loading');
+            button.setAttribute('aria-busy', 'false');
             button.title = tRef.current.locationPermissionUnavailable;
+            onLocationErrorRef.current?.(error.message || tRef.current.locationPermissionUnavailable);
             window.setTimeout(() => { button.title = tRef.current.goToLocation; }, 3000);
           },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
@@ -638,7 +659,7 @@ export default function App() {
     <SiteTopbar nav={nav} activeTab={tab} locale={locale} user={user} t={t} onLocaleChange={setLocale} onNavigate={selectTab} onSignIn={() => setAuthMode('login')} onRegister={() => setAuthMode('register')} onSignOut={() => { setToken(''); setUser(null); localStorage.removeItem('mpota-token'); setTab('home'); }} />
     <main>{tab === 'park-editor' ? null : tab === 'home' ? <HomePage parks={parks} t={t} locale={locale} token={token} onMap={() => setTab('map')} onPropose={() => setTab('propose')} onQso={() => setTab('qso')} onSignIn={() => setAuthMode('login')} onPolicy={(kind) => setTab(kind)} /> : tab === 'conduct' ? <PolicyPage kind="conduct" locale={locale} onBack={() => setTab('home')} /> : tab === 'rules' ? <PolicyPage kind="rules" locale={locale} onBack={() => setTab('home')} /> : <><section className="hero"><div className="hero-copy"><p className="eyebrow">Municipal Parks on the Air</p><h1>{t.hero}</h1><p className="hero-text">{t.heroText}</p><div className="hero-actions"><button className="button" onClick={() => setTab('propose')}>{t.propose}</button><span className="stat"><strong>{parks.length}</strong> {t.approved}</span></div></div></section></>}
       {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
-      {(tab === 'map' || tab === 'propose') && <section className="content-grid"><div className="panel map-panel"><div className="panel-heading"><div>{tab === 'map' ? <><p className="eyebrow">{t.liveCatalog}</p><h2>{t.map}</h2></> : <><p className="eyebrow">{t.locationFirst}</p><h2>{t.choose}</h2><p className="map-hint">{t.pickLocation}</p></>}</div><span className="badge">{tab === 'map' ? `${mapParks.length} ${t.entities}` : `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`}</span></div><MapView parks={mapParks} picking={tab === 'propose'} t={t} selectedPoint={tab === 'propose' ? point : undefined} view={mapView} onViewChange={setMapView} onParkSelect={openPark} onVisibleParksChange={setVisibleParks} onViewportChange={refreshParks} onPick={tab === 'propose' ? handleMapPick : () => undefined} /></div>{tab === 'map' ? <aside className="panel side-panel"><p className="eyebrow">{t.approvedReferences}</p><h2>{t.exploreMpota}</h2><p className="muted">{t.onlyApprovedMap}</p><div className="park-list approved-reference-list">{visibleParks.map((park) => <button className="park-row" key={park.id} onClick={() => openPark(park)}><span className="reference">{park.reference}</span><span>{park.name}</span><small>{park.countryIso2} · {park.locality || park.region || t.municipalPark}</small></button>)}</div></aside> : <aside className="panel form-panel"><p className="eyebrow">{t.communityContribution}</p><h2>{t.propose}</h2>{token ? <form onSubmit={submitProposal}><div className="coordinate-grid"><label>{t.latitude}<input value={point.latitude.toFixed(6)} readOnly /></label><label>{t.longitude}<input value={point.longitude.toFixed(6)} readOnly /></label></div><label>{t.country}<input value={locationFields.countryName} placeholder={t.selectPointMap} readOnly /></label><label>{t.countryCode}<input name="countryIso2" required minLength={2} maxLength={2} placeholder="ES" value={locationFields.countryIso2} onChange={(event) => updateLocationField('countryIso2', event.target.value.toUpperCase())} /></label><label>{t.continentCode}<input name="continentCode" required placeholder="EU" value={locationFields.continentCode} onChange={(event) => updateLocationField('continentCode', event.target.value.toUpperCase())} /></label><label>{t.region}<input name="region" value={locationFields.region} onChange={(event) => updateLocationField('region', event.target.value)} /></label><label>{t.locality}<input name="locality" value={locationFields.locality} onChange={(event) => updateLocationField('locality', event.target.value)} /></label>{isResolvingLocation && <p className="map-hint">{t.lookupLocation}</p>}<label>{t.parkName}<input name="name" required placeholder={t.municipalParkName} /></label><label>{t.type}<select name="parkType"><option value="MUNICIPAL_PARK">{t.municipalPark}</option><option value="URBAN_FOREST">{t.urbanForest}</option><option value="BOTANICAL_GARDEN">{t.botanicalGarden}</option></select></label><label>{t.description}<textarea name="description" rows={3} /></label><label>{t.sourceUrl} <span className="optional">{t.optional}</span><input name="sourceUrl" type="url" placeholder="https://..." /></label><label>{t.accessNotes}<textarea name="accessNotes" rows={3} /></label><button className="button full" type="submit">{t.submit}</button></form> : <div className="login-callout"><p>{t.loginRequired}</p><button className="button" onClick={() => setAuthMode('login')}>{t.signIn}</button></div>}</aside>}</section>}
+      {(tab === 'map' || tab === 'propose') && <section className="content-grid"><div className="panel map-panel"><div className="panel-heading"><div>{tab === 'map' ? <><p className="eyebrow">{t.liveCatalog}</p><h2>{t.map}</h2></> : <><p className="eyebrow">{t.locationFirst}</p><h2>{t.choose}</h2><p className="map-hint">{t.pickLocation}</p></>}</div><span className="badge">{tab === 'map' ? `${mapParks.length} ${t.entities}` : `${point.latitude.toFixed(5)}, ${point.longitude.toFixed(5)}`}</span></div><MapView parks={mapParks} picking={tab === 'propose'} t={t} selectedPoint={tab === 'propose' ? point : undefined} view={mapView} onViewChange={setMapView} onParkSelect={openPark} onVisibleParksChange={setVisibleParks} onViewportChange={refreshMapParks} onLocationError={setMessage} onPick={tab === 'propose' ? handleMapPick : () => undefined} /></div>{tab === 'map' ? <aside className="panel side-panel"><p className="eyebrow">{t.approvedReferences}</p><h2>{t.exploreMpota}</h2><p className="muted">{t.onlyApprovedMap}</p><div className="park-list approved-reference-list">{visibleParks.map((park) => <button className="park-row" key={park.id} onClick={() => openPark(park)}><span className="reference">{park.reference}</span><span>{park.name}</span><small>{park.countryIso2} · {park.locality || park.region || t.municipalPark}</small></button>)}</div></aside> : <aside className="panel form-panel"><p className="eyebrow">{t.communityContribution}</p><h2>{t.propose}</h2>{token ? <form onSubmit={submitProposal}><div className="coordinate-grid"><label>{t.latitude}<input value={point.latitude.toFixed(6)} readOnly /></label><label>{t.longitude}<input value={point.longitude.toFixed(6)} readOnly /></label></div><label>{t.country}<input value={locationFields.countryName} placeholder={t.selectPointMap} readOnly /></label><label>{t.countryCode}<input name="countryIso2" required minLength={2} maxLength={2} placeholder="ES" value={locationFields.countryIso2} onChange={(event) => updateLocationField('countryIso2', event.target.value.toUpperCase())} /></label><label>{t.continentCode}<input name="continentCode" required placeholder="EU" value={locationFields.continentCode} onChange={(event) => updateLocationField('continentCode', event.target.value.toUpperCase())} /></label><label>{t.region}<input name="region" value={locationFields.region} onChange={(event) => updateLocationField('region', event.target.value)} /></label><label>{t.locality}<input name="locality" value={locationFields.locality} onChange={(event) => updateLocationField('locality', event.target.value)} /></label>{isResolvingLocation && <p className="map-hint">{t.lookupLocation}</p>}<label>{t.parkName}<input name="name" required placeholder={t.municipalParkName} /></label><label>{t.type}<select name="parkType"><option value="MUNICIPAL_PARK">{t.municipalPark}</option><option value="URBAN_FOREST">{t.urbanForest}</option><option value="BOTANICAL_GARDEN">{t.botanicalGarden}</option></select></label><label>{t.description}<textarea name="description" rows={3} /></label><label>{t.sourceUrl} <span className="optional">{t.optional}</span><input name="sourceUrl" type="url" placeholder="https://..." /></label><label>{t.accessNotes}<textarea name="accessNotes" rows={3} /></label><button className="button full" type="submit">{t.submit}</button></form> : <div className="login-callout"><p>{t.loginRequired}</p><button className="button" onClick={() => setAuthMode('login')}>{t.signIn}</button></div>}</aside>}</section>}
       {tab === 'qso' && <ManualQsoPage parks={parks} token={token} t={t} onSignIn={() => setAuthMode('login')} onMessage={setMessage} />}
       {tab === 'profile' && user && <ProfilePage token={token} user={user} locale={locale} t={t} onUserChange={(updated) => { setUser(updated); setLocale(updated.locale); }} onMessage={setMessage} />}
       {tab === 'uploads' && <section className="single-panel panel"><p className="eyebrow">Activator tools</p><h2>{t.uploads}</h2>{token ? <div className="log-tools-grid">
