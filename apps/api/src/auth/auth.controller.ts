@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { AuthService } from './auth.service';
 import { CurrentUser } from './auth.decorators';
@@ -7,15 +7,22 @@ import { Public } from './public.decorator';
 import { AuthUser } from './auth.types';
 
 class RegisterDto {
+  @ApiProperty({ example: 'operator@example.org', format: 'email' })
   @IsEmail() email!: string;
+  @ApiProperty({ example: 'correct-horse-battery-staple', minLength: 10 })
   @IsString() @MinLength(10) password!: string;
+  @ApiProperty({ example: 'Jane Operator', minLength: 2 })
   @IsString() @MinLength(2) displayName!: string;
+  @ApiPropertyOptional({ example: 'EA7KLK' })
   @IsOptional() @IsString() callsign?: string;
+  @ApiPropertyOptional({ enum: ['en', 'es', 'fr', 'de'], example: 'en', default: 'en' })
   @IsOptional() @IsIn(['en', 'es', 'fr', 'de']) locale?: string;
 }
 
 class LoginDto {
+  @ApiProperty({ example: 'operator@example.org', format: 'email' })
   @IsEmail() email!: string;
+  @ApiProperty({ example: 'correct-horse-battery-staple' })
   @IsString() password!: string;
 }
 

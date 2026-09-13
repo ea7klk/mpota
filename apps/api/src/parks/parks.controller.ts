@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, Length, MaxLength, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../auth/auth.decorators';
 import { Public } from '../auth/public.decorator';
@@ -7,21 +7,36 @@ import { AuthUser } from '../auth/auth.types';
 import { ParksService } from './parks.service';
 
 class ProposalDto {
+  @ApiProperty({ example: 'ES', minLength: 2, maxLength: 2, description: 'Uppercase ISO 3166-1 alpha-2 country code' })
   @IsString() @Length(2, 2) countryIso2!: string;
+  @ApiProperty({ example: 'EU', minLength: 2, maxLength: 4 })
   @IsString() @Length(2, 4) continentCode!: string;
+  @ApiPropertyOptional({ example: 'Comunidad de Madrid' })
   @IsOptional() @IsString() region?: string;
+  @ApiPropertyOptional({ example: 'Madrid' })
   @IsOptional() @IsString() locality?: string;
+  @ApiProperty({ example: 40.4168, minimum: -90, maximum: 90 })
   @IsLatitude() latitude!: number;
+  @ApiProperty({ example: -3.7038, minimum: -180, maximum: 180 })
   @IsLongitude() longitude!: number;
+  @ApiPropertyOptional({ example: 'MUNICIPAL_PARK', default: 'MUNICIPAL_PARK' })
   @IsOptional() @IsString() parkType?: string;
+  @ApiProperty({ example: 'Parque Municipal del Retiro', minLength: 2, maxLength: 240 })
   @IsString() @MinLength(2) @MaxLength(240) name!: string;
+  @ApiPropertyOptional({ example: 'A centrally located municipal park suitable for portable amateur-radio operation.' })
   @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ example: 'https://madrid.es/parques/retiro', format: 'uri' })
   @IsOptional() @IsUrl() sourceUrl?: string;
+  @ApiPropertyOptional({ example: 'Public access during park opening hours; check local restrictions.' })
   @IsOptional() @IsString() accessNotes?: string;
+  @ApiPropertyOptional({ example: 'https://example.org/photos/retiro.jpg', format: 'uri' })
   @IsOptional() @IsUrl() photoUrl?: string;
 }
 
-class DecisionDto { @IsOptional() @IsString() notes?: string; }
+class DecisionDto {
+  @ApiPropertyOptional({ example: 'Municipal ownership verified from the city parks register.' })
+  @IsOptional() @IsString() notes?: string;
+}
 
 @ApiTags('parks')
 @Controller()

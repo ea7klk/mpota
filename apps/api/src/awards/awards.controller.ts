@@ -1,5 +1,5 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsArray, IsBoolean, IsIn, IsObject, IsOptional, IsString, IsUrl, Length, MinLength } from 'class-validator';
 import { CurrentUser, Roles } from '../auth/auth.decorators';
 import { Public } from '../auth/public.decorator';
@@ -7,14 +7,23 @@ import { AuthUser } from '../auth/auth.types';
 import { AwardsService } from './awards.service';
 
 class AwardDto {
+  @ApiProperty({ example: 'EU-MUNICIPAL-10', minLength: 3 })
   @IsString() @MinLength(3) key!: string;
+  @ApiProperty({ example: 'Municipal Explorer - 10 Parks', minLength: 2 })
   @IsString() @MinLength(2) name!: string;
+  @ApiPropertyOptional({ example: 'Activate ten approved municipal parks.' })
   @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ example: 'https://example.org/badges/municipal-explorer.svg', format: 'uri' })
   @IsOptional() @IsUrl() iconUrl?: string;
+  @ApiProperty({ enum: ['ACTIVATOR', 'HUNTER', 'COMBINED'], example: 'ACTIVATOR' })
   @IsIn(['ACTIVATOR', 'HUNTER', 'COMBINED']) type!: 'ACTIVATOR' | 'HUNTER' | 'COMBINED';
+  @ApiPropertyOptional({ type: [String], example: ['ES', 'FR', 'DE'] })
   @IsOptional() @IsArray() @IsString({ each: true }) @Length(2, 2, { each: true }) scopeCountries?: string[];
+  @ApiPropertyOptional({ type: [String], example: ['EU'] })
   @IsOptional() @IsArray() @IsString({ each: true }) scopeContinents?: string[];
+  @ApiPropertyOptional({ example: false, default: false })
   @IsOptional() @IsBoolean() allCountries?: boolean;
+  @ApiPropertyOptional({ type: Object, example: { minimumEntities: 10 } })
   @IsOptional() @IsObject() ruleDefinition?: Record<string, unknown>;
 }
 
