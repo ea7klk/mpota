@@ -10,6 +10,7 @@ type AdminUser = User & { callsign?: string; status: string; approvalScope: Appr
 type Park = { id: string; reference: string; countryIso2: string; continentCode: string; region?: string; locality?: string; latitude: string; longitude: string; parkType: string; name: string; description?: string; sourceUrl?: string; accessNotes?: string; photoUrl?: string };
 type Proposal = Park & { status: string; reviewNotes?: string };
 type Award = { id: string; key: string; name: string; description?: string; type: string; status: string; version: number };
+type Duplicate = { kind: 'APPROVED_PARK' | 'PENDING_PROPOSAL'; id: string; reference?: string; name: string; distance_meters: number };
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
 const TILE_URL = import.meta.env.VITE_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -18,7 +19,7 @@ const COUNTRY_CODES = 'AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD 
 const CONTINENT_CODES = ['AF', 'AN', 'AS', 'EU', 'NA', 'OC', 'SA'];
 const ROLE_OPTIONS: Role[] = ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN'];
 
-const PARK_MARKER = L.divIcon({ className: 'park-marker', html: '<span><b>MP</b></span>', iconSize: [38, 38], iconAnchor: [19, 38], popupAnchor: [0, -34] });
+const PARK_MARKER = L.icon({ iconUrl: '/mpota-marker.svg', iconSize: [42, 42], iconAnchor: [21, 42], popupAnchor: [0, -38], className: 'mpota-marker-icon' });
 const PROPOSAL_MARKER = L.divIcon({ className: 'proposal-marker', html: '<span><b>+</b></span>', iconSize: [34, 42], iconAnchor: [17, 42], popupAnchor: [0, -38] });
 
 const copy: Record<Locale, Record<string, string>> = {
@@ -107,6 +108,7 @@ export default function App() {
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
   const [tab, setTab] = useState('map');
   const [authMode, setAuthMode] = useState<'login' | 'register' | null>(null);
+  const [duplicateWarning, setDuplicateWarning] = useState<{ duplicates: Duplicate[]; payload: Record<string, FormDataEntryValue> } | null>(null);
   const [point, setPoint] = useState<Coordinates>({ latitude: 40.4168, longitude: -3.7038 });
   const [message, setMessage] = useState('');
   const t = copy[locale];
@@ -121,7 +123,26 @@ export default function App() {
   useEffect(() => { localStorage.setItem('mpota-locale', locale); }, [locale]);
 
   const submitAuth = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { const result = await request<{ user: User; accessToken: string }>(authMode === 'login' ? '/auth/login' : '/auth/register', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) }); setToken(result.accessToken); localStorage.setItem('mpota-token', result.accessToken); setUser(result.user); setAuthMode(null); setMessage(''); } catch (error) { setMessage((error as Error).message); } };
-  const submitProposal = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!token) return setAuthMode('login'); const form = new FormData(event.currentTarget); const payload = Object.fromEntries(form); try { await request('/proposals', { method: 'POST', body: JSON.stringify({ ...payload, latitude: point.latitude, longitude: point.longitude }) }, token); setMessage('Proposal submitted for approval.'); } catch (error) { setMessage((error as Error).message); } };
+  const sendProposal = async (payload: Record<string, FormDataEntryValue>) => {
+    await request('/proposals', { method: 'POST', body: JSON.stringify({ ...payload, latitude: point.latitude, longitude: point.longitude }) }, token);
+    setMessage('Proposal submitted for approval.');
+  };
+  const submitProposal = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!token) return setAuthMode('login');
+    const payload = Object.fromEntries(new FormData(event.currentTarget));
+    try {
+      const result = await request<{ duplicates: Duplicate[] }>('/proposals/duplicate-check', {
+        method: 'POST',
+        body: JSON.stringify({ latitude: point.latitude, longitude: point.longitude })
+      }, token);
+      if (result.duplicates.length) {
+        setDuplicateWarning({ duplicates: result.duplicates, payload });
+        return;
+      }
+      await sendProposal(payload);
+    } catch (error) { setMessage((error as Error).message); }
+  };
   const submitAward = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const form = new FormData(event.currentTarget); const value = Object.fromEntries(form); try { await request('/awards', { method: 'POST', body: JSON.stringify({ ...value, type: 'ACTIVATOR', allCountries: true, ruleDefinition: { minimumEntities: Number(value.minimumEntities || 1) } }) }, token); setMessage('Award draft created.'); refresh(); } catch (error) { setMessage((error as Error).message); } };
   const uploadAdif = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); const input = event.currentTarget.elements.namedItem('file') as HTMLInputElement; if (!input.files?.[0]) return; const body = new FormData(); body.append('file', input.files[0]); try { await request('/uploads/adif', { method: 'POST', body }, token); setMessage('ADIF uploaded and processed.'); } catch (error) { setMessage((error as Error).message); } };
 
@@ -129,8 +150,8 @@ export default function App() {
   const selectTab = (id: string) => { setTab(id); if (id === 'admin') loadQueue(); if (id === 'users') loadUsers(); };
 
   return <div className="app-shell">
-    <header className="topbar"><div className="brand"><span className="brand-mark"><b>MP</b></span><span>MPOTA</span></div><nav>{nav.map((item) => <button className={tab === item.id ? 'nav-active' : ''} key={item.id} onClick={() => selectTab(item.id)}>{item.label}</button>)}</nav><div className="header-actions"><select aria-label="Language" value={locale} onChange={(event) => setLocale(event.target.value as Locale)}><option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option></select>{user ? <button className="user-pill" onClick={() => { setToken(''); setUser(null); localStorage.removeItem('mpota-token'); }}>{user.displayName} · {t.signOut}</button> : <><button className="button ghost" onClick={() => setAuthMode('login')}>{t.signIn}</button><button className="button" onClick={() => setAuthMode('register')}>{t.register}</button></>}</div></header>
-    <main><section className="hero"><div className="hero-copy"><img className="site-banner" src="/mpota-logo-banner.svg" alt="MPOTA — Municipal Parks On The Air" /><p className="eyebrow">Municipal Parks on the Air</p><h1>{t.hero}</h1><p className="hero-text">{t.heroText}</p><div className="hero-actions"><button className="button" onClick={() => setTab('propose')}>{t.propose}</button><span className="stat"><strong>{parks.length}</strong> {t.approved}</span></div></div><div className="hero-card"><div className="signal">◎</div><div><strong>MPES-00001</strong><span>Ready for the community</span></div></div></section>
+    <header className="topbar"><div className="brand"><img className="header-banner" src="/mpota-logo-banner.svg" alt="MPOTA — Municipal Parks On The Air" /></div><nav>{nav.map((item) => <button className={tab === item.id ? 'nav-active' : ''} key={item.id} onClick={() => selectTab(item.id)}>{item.label}</button>)}</nav><div className="header-actions"><select aria-label="Language" value={locale} onChange={(event) => setLocale(event.target.value as Locale)}><option value="en">EN</option><option value="es">ES</option><option value="fr">FR</option><option value="de">DE</option></select>{user ? <button className="user-pill" onClick={() => { setToken(''); setUser(null); localStorage.removeItem('mpota-token'); }}>{user.displayName} · {t.signOut}</button> : <><button className="button ghost" onClick={() => setAuthMode('login')}>{t.signIn}</button><button className="button" onClick={() => setAuthMode('register')}>{t.register}</button></>}</div></header>
+    <main><section className="hero"><div className="hero-copy"><p className="eyebrow">Municipal Parks on the Air</p><h1>{t.hero}</h1><p className="hero-text">{t.heroText}</p><div className="hero-actions"><button className="button" onClick={() => setTab('propose')}>{t.propose}</button><span className="stat"><strong>{parks.length}</strong> {t.approved}</span></div></div><div className="hero-card"><div className="signal">◎</div><div><strong>MPES-00001</strong><span>Ready for the community</span></div></div></section>
       {message && <div className="notice">{message}<button onClick={() => setMessage('')}>×</button></div>}
       {tab === 'map' && <section className="content-grid"><div className="panel map-panel"><div className="panel-heading"><div><p className="eyebrow">Live catalog</p><h2>{t.map}</h2></div><span className="badge">{parks.length} entities</span></div><MapView parks={parks} picking={false} onPick={() => undefined} /></div><aside className="panel side-panel"><p className="eyebrow">Approved references</p><h2>Explore MPOTA</h2><p className="muted">Only approved municipal parks appear on the public map.</p><div className="park-list">{parks.slice(0, 8).map((park) => <button className="park-row" key={park.id} onClick={() => setMessage(`${park.reference} · ${park.name}`)}><span className="reference">{park.reference}</span><span>{park.name}</span><small>{park.countryIso2} · {park.locality || park.region || 'Municipal park'}</small></button>)}</div></aside></section>}
       {tab === 'propose' && <section className="content-grid"><div className="panel map-panel"><div className="panel-heading"><div><p className="eyebrow">Location first</p><h2>{t.choose}</h2><p className="map-hint">{t.pickLocation}</p></div><span className="badge">{point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}</span></div><MapView parks={parks} picking selectedPoint={point} onPick={(latitude, longitude) => setPoint({ latitude, longitude })} /></div><aside className="panel form-panel"><p className="eyebrow">Community contribution</p><h2>{t.propose}</h2>{token ? <form onSubmit={submitProposal}><div className="coordinate-grid"><label>Latitude<input value={point.latitude.toFixed(6)} readOnly /></label><label>Longitude<input value={point.longitude.toFixed(6)} readOnly /></label></div><label>Country code<input name="countryIso2" required minLength={2} maxLength={2} placeholder="ES" /></label><label>Continent code<input name="continentCode" required placeholder="EU" /></label><label>Region<input name="region" /></label><label>Locality<input name="locality" /></label><label>Park name<input name="name" required placeholder="Municipal park name" /></label><label>Type<select name="parkType"><option value="MUNICIPAL_PARK">Municipal park</option><option value="URBAN_FOREST">Urban forest</option><option value="BOTANICAL_GARDEN">Botanical garden</option></select></label><label>Description<textarea name="description" rows={3} /></label><label>Source URL<input name="sourceUrl" type="url" placeholder="https://..." /></label><label>Access notes<textarea name="accessNotes" rows={3} /></label><button className="button full" type="submit">{t.submit}</button></form> : <div className="login-callout"><p>{t.loginRequired}</p><button className="button" onClick={() => setAuthMode('login')}>{t.signIn}</button></div>}</aside></section>}
@@ -139,6 +160,7 @@ export default function App() {
       {tab === 'admin' && canModerate && <ModerationPanel proposals={proposals} parks={parks} canRemove={canManageUsers} token={token} t={t} onRefresh={() => { loadQueue(); refresh(); }} onMessage={setMessage} />}
       {tab === 'users' && canManageUsers && <UsersPanel users={adminUsers} currentUserId={user?.id} token={token} t={t} onRefresh={loadUsers} onMessage={setMessage} />}
     </main>
+    {duplicateWarning && <div className="modal-backdrop"><div className="modal duplicate-modal" role="alertdialog" aria-modal="true" aria-labelledby="duplicate-title"><button className="modal-close" onClick={() => setDuplicateWarning(null)} aria-label="Close">×</button><p className="eyebrow">Possible duplicate</p><h2 id="duplicate-title">Nearby MPOTA location</h2><p className="muted">An approved park or pending request is less than 150 metres from this point. Please check the entries before submitting.</p><div className="duplicate-list">{duplicateWarning.duplicates.map((duplicate) => <div className="duplicate-row" key={`${duplicate.kind}-${duplicate.id}`}><div><strong>{duplicate.reference || 'Pending request'}</strong><span>{duplicate.name}</span></div><small>{Number(duplicate.distance_meters).toFixed(1)} m away</small></div>)}</div><div className="row-actions"><button className="button ghost" onClick={() => setDuplicateWarning(null)}>Cancel</button><button className="button" onClick={async () => { try { await sendProposal(duplicateWarning.payload); setDuplicateWarning(null); } catch (error) { setMessage((error as Error).message); } }}>Submit anyway</button></div></div></div>}
     {authMode && <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={() => setAuthMode(null)}>×</button><p className="eyebrow">MPOTA account</p><h2>{authMode === 'login' ? t.signIn : t.register}</h2><form onSubmit={submitAuth}><label>{t.email}<input name="email" type="email" required /></label><label>{t.password}<input name="password" type="password" minLength={8} required /></label>{authMode === 'register' && <><label>{t.name}<input name="displayName" required /></label><label>{t.callsign}<input name="callsign" /></label></>}<button className="button full">{authMode === 'login' ? t.signIn : t.register}</button></form><button className="link-button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? t.register : t.signIn}</button></div></div>}
     <footer><span>MPOTA · Municipal Parks on the Air</span><span>OpenStreetMap attribution and usage policy apply.</span></footer>
   </div>;

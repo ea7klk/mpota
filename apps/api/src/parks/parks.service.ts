@@ -54,6 +54,34 @@ export class ParksService {
     return proposal;
   }
 
+  async nearby(input: { latitude: number; longitude: number }) {
+    if (input.latitude < -90 || input.latitude > 90 || input.longitude < -180 || input.longitude > 180) {
+      throw new BadRequestException('Coordinates are out of range');
+    }
+    const rows = await this.db.db.execute(sql`
+      WITH candidates AS (
+        SELECT 'APPROVED_PARK'::text AS kind, p.id, p.reference, p.name,
+          ST_Distance(p.geom::geography, ST_SetSRID(ST_MakePoint(${input.longitude}, ${input.latitude}), 4326)::geography) AS distance_meters
+        FROM parks p
+        WHERE p.status = 'APPROVED'
+          AND ST_DWithin(p.geom::geography, ST_SetSRID(ST_MakePoint(${input.longitude}, ${input.latitude}), 4326)::geography, 150)
+        UNION ALL
+        SELECT 'PENDING_PROPOSAL'::text AS kind, pp.id, NULL::text AS reference, pp.name,
+          ST_Distance(ST_SetSRID(ST_MakePoint(pp.longitude::double precision, pp.latitude::double precision), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(${input.longitude}, ${input.latitude}), 4326)::geography) AS distance_meters
+        FROM park_proposals pp
+        WHERE pp.status IN ('PENDING', 'CHANGES_REQUESTED')
+          AND ST_DWithin(ST_SetSRID(ST_MakePoint(pp.longitude::double precision, pp.latitude::double precision), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(${input.longitude}, ${input.latitude}), 4326)::geography, 150)
+      )
+      SELECT kind, id, reference, name, ROUND(distance_meters::numeric, 1) AS distance_meters
+      FROM candidates
+      WHERE distance_meters < 150
+      ORDER BY distance_meters
+    `);
+    return { duplicates: rows.rows };
+  }
+
   async mine(user: AuthUser) {
     return this.db.db.select().from(parkProposals).where(eq(parkProposals.submittedBy, user.id)).orderBy(desc(parkProposals.createdAt));
   }
@@ -71,7 +99,20 @@ export class ParksService {
       const [proposal] = await tx.select().from(parkProposals).where(eq(parkProposals.id, proposalId));
       if (!proposal || proposal.status !== 'PENDING') throw new NotFoundException('Pending proposal not found');
       await this.assertScope(user, proposal.countryIso2, proposal.continentCode, tx);
-      await tx.execute(sql`INSERT INTO country_sequences (country_iso2, next_value) VALUES (${proposal.countryIso2}, 1) ON CONFLICT (country_iso2) DO NOTHING`);
+      await tx.execute(sql`
+        INSERT INTO country_sequences (country_iso2, next_value)
+        VALUES (
+          ${proposal.countryIso2},
+          COALESCE((
+            SELECT MAX(CAST(SUBSTRING(reference FROM '[0-9]{5}$') AS integer)) + 1
+            FROM parks
+            WHERE country_iso2 = ${proposal.countryIso2}
+              AND reference ~ ${`^MP${proposal.countryIso2}-[0-9]{5}$`}
+          ), 1)
+        )
+        ON CONFLICT (country_iso2) DO UPDATE
+          SET next_value = GREATEST(country_sequences.next_value, EXCLUDED.next_value)
+      `);
       const sequenceResult = await tx.execute(sql`SELECT next_value FROM country_sequences WHERE country_iso2 = ${proposal.countryIso2} FOR UPDATE`);
       const nextValue = Number((sequenceResult.rows[0] as { next_value: number }).next_value);
       const reference = `MP${proposal.countryIso2}-${String(nextValue).padStart(5, '0')}`;

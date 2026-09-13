@@ -38,6 +38,13 @@ class DecisionDto {
   @IsOptional() @IsString() notes?: string;
 }
 
+class DuplicateCheckDto {
+  @ApiProperty({ example: 40.4168, minimum: -90, maximum: 90 })
+  @IsLatitude() latitude!: number;
+  @ApiProperty({ example: -3.7038, minimum: -180, maximum: 180 })
+  @IsLongitude() longitude!: number;
+}
+
 @ApiTags('parks')
 @Controller()
 export class ParksController {
@@ -57,6 +64,11 @@ export class ParksController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Propose a municipal park' })
   propose(@CurrentUser() user: AuthUser, @Body() dto: ProposalDto) { return this.parks.createProposal(user, dto); }
+
+  @Post('proposals/duplicate-check')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Find approved parks and pending proposals within 150 metres' })
+  duplicateCheck(@Body() dto: DuplicateCheckDto) { return this.parks.nearby(dto); }
 
   @Get('proposals/mine')
   @ApiBearerAuth()
