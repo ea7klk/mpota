@@ -1,6 +1,6 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
-import { createHash } from 'node:crypto';
-import { eq, inArray } from 'drizzle-orm';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { createHash, randomUUID } from 'node:crypto';
+import { and, desc, eq, isNull, ne } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
 import { adifUploads, contacts, parks } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
@@ -8,6 +8,8 @@ import { EventsService } from '../events/events.service';
 import { StorageService } from './storage.service';
 
 type AdifRecord = Record<string, string>;
+type QsoInput = { parkReference: string; qsoCallsign: string; qsoDatetime: Date; band?: string; mode?: string };
+type QsoResult = { accepted: boolean; contactId: string; validity: string; errorMessage?: string };
 
 function parseAdif(text: string): AdifRecord[] {
   return text.split(/<eor\s*>/i).map((chunk) => {
@@ -23,38 +25,174 @@ function parseAdif(text: string): AdifRecord[] {
   }).filter((record) => record.CALL);
 }
 
+function normalizeCallsign(value: string) {
+  return value.trim().toUpperCase();
+}
+
+function utcDay(value: Date) {
+  return value.toISOString().slice(0, 10);
+}
+
+function isUniqueViolation(error: unknown) {
+  return Boolean(error && typeof error === 'object' && 'code' in error && (error as { code?: string }).code === '23505');
+}
+
 @Injectable()
 export class UploadsService {
   constructor(private readonly db: DbService, private readonly storage: StorageService, private readonly events: EventsService) {}
 
-  async upload(user: AuthUser, file: Express.Multer.File) {
+  async upload(user: AuthUser, file: Express.Multer.File, parkReference: string) {
     if (!file || !/\.(adi|adif)$/i.test(file.originalname)) throw new BadRequestException('Upload an .adi or .adif file');
+    const park = await this.approvedPark(parkReference);
     const key = `${user.id}/${Date.now()}-${file.originalname.replace(/[^a-z0-9._-]/gi, '_')}`;
     const sha256 = createHash('sha256').update(file.buffer).digest('hex');
     await this.storage.put(key, file.buffer, file.mimetype || 'application/octet-stream');
-    const [upload] = await this.db.db.insert(adifUploads).values({ uploadedBy: user.id, objectKey: key, originalFilename: file.originalname, sha256, sizeBytes: file.size, status: 'PROCESSING' }).returning();
-    const records = parseAdif(file.buffer.toString('utf8'));
-    const references = [...new Set(records.map((r) => r.MP_REF || r.POTA_REF).filter(Boolean))] as string[];
-    const approved = references.length ? await this.db.db.select({ id: parks.id, reference: parks.reference }).from(parks).where(inArray(parks.reference, references)) : [];
-    const approvedByRef = new Map(approved.map((park) => [park.reference, park.id]));
-    let errors = 0;
-    for (const record of records) {
-      const reference = (record.MP_REF || record.POTA_REF || '').toUpperCase() || undefined;
-      const parkId = reference ? approvedByRef.get(reference) : undefined;
-      const validity = reference && !parkId ? 'INVALID_PARK' : 'VALID';
-      if (validity !== 'VALID') errors += 1;
-      await this.db.db.insert(contacts).values({ uploadId: upload.id, userId: user.id, parkId, parkReference: reference, qsoCallsign: record.CALL, qsoDatetime: this.parseDate(record), band: record.BAND, mode: record.MODE, validity, errorMessage: validity === 'VALID' ? undefined : 'Reference is not an approved MPOTA entity' });
+    try {
+      const [upload] = await this.db.db.insert(adifUploads).values({
+        uploadedBy: user.id, parkId: park.id, source: 'ADIF', objectKey: key,
+        originalFilename: file.originalname, sha256, sizeBytes: file.size, status: 'RECEIVED'
+      }).returning();
+      void this.processAdif(upload.id, user, park, file.buffer);
+      return this.publicUpload(upload, park);
+    } catch (error) {
+      await this.storage.delete(key).catch(() => undefined);
+      throw error;
     }
-    const [completed] = await this.db.db.update(adifUploads).set({ status: errors ? 'PARTIAL' : 'COMPLETED', contactCount: records.length, errorCount: errors, processedAt: new Date() }).where(eq(adifUploads.id, upload.id)).returning();
-    await this.events.publish('mpota.adif.processed', { uploadId: upload.id, userId: user.id, contactCount: records.length, errorCount: errors });
-    return completed;
   }
 
-  list(user: AuthUser) { return this.db.db.select().from(adifUploads).where(eq(adifUploads.uploadedBy, user.id)); }
+  async addManualQso(user: AuthUser, input: QsoInput) {
+    const park = await this.approvedPark(input.parkReference);
+    const qsoDatetime = new Date(input.qsoDatetime);
+    if (Number.isNaN(qsoDatetime.getTime())) throw new BadRequestException('qsoDatetime must be a valid ISO date');
+    const [upload] = await this.db.db.insert(adifUploads).values({
+      uploadedBy: user.id, parkId: park.id, source: 'MANUAL', objectKey: `manual/${user.id}/${randomUUID()}.qso`,
+      originalFilename: 'Manual QSO', sha256: createHash('sha256').update(JSON.stringify(input)).digest('hex'),
+      sizeBytes: 0, status: 'PROCESSING'
+    }).returning();
+    const result = await this.storeQso(upload.id, user, { ...input, parkReference: park.reference, qsoDatetime });
+    await this.finishUpload(upload.id, 1, result.accepted ? 1 : 0, result.accepted ? 0 : 1);
+    return { ...result, uploadId: upload.id, parkReference: park.reference };
+  }
+
+  async list(user: AuthUser) {
+    const rows = await this.db.db.select({
+      id: adifUploads.id, originalFilename: adifUploads.originalFilename, source: adifUploads.source,
+      status: adifUploads.status, sizeBytes: adifUploads.sizeBytes, contactCount: adifUploads.contactCount,
+      validCount: adifUploads.validCount, errorCount: adifUploads.errorCount, uploadedAt: adifUploads.uploadedAt,
+      processedAt: adifUploads.processedAt, parkReference: parks.reference, parkName: parks.name
+    }).from(adifUploads).leftJoin(parks, eq(adifUploads.parkId, parks.id)).where(and(
+      eq(adifUploads.uploadedBy, user.id), eq(adifUploads.source, 'ADIF')
+    )).orderBy(desc(adifUploads.uploadedAt));
+    return rows;
+  }
+
+  async rejectedQsos(user: AuthUser, uploadId: string) {
+    const [upload] = await this.db.db.select({ id: adifUploads.id }).from(adifUploads).where(and(
+      eq(adifUploads.id, uploadId), eq(adifUploads.uploadedBy, user.id), eq(adifUploads.source, 'ADIF')
+    ));
+    if (!upload) throw new NotFoundException('ADIF upload not found');
+    return this.db.db.select({
+      id: contacts.id, qsoCallsign: contacts.qsoCallsign, qsoDatetime: contacts.qsoDatetime,
+      qsoDateUtc: contacts.qsoDateUtc, band: contacts.band, mode: contacts.mode,
+      validity: contacts.validity, errorMessage: contacts.errorMessage
+    }).from(contacts).where(and(eq(contacts.uploadId, uploadId), ne(contacts.validity, 'VALID'))).orderBy(contacts.qsoDatetime);
+  }
+
+  private async processAdif(uploadId: string, user: AuthUser, park: typeof parks.$inferSelect, buffer: Buffer) {
+    await this.db.db.update(adifUploads).set({ status: 'PROCESSING' }).where(eq(adifUploads.id, uploadId));
+    try {
+      const records = parseAdif(buffer.toString('utf8'));
+      const seenHunters = new Set<string>();
+      let validCount = 0;
+      let errorCount = 0;
+      for (const record of records) {
+        const callsign = normalizeCallsign(record.CALL ?? '');
+        const qsoDatetime = this.parseDate(record);
+        let result: QsoResult;
+        if (!qsoDatetime) {
+          result = await this.storeRejectedQso(uploadId, user, park, callsign || 'UNKNOWN', undefined, record.BAND, record.MODE, 'INVALID_DATE', 'QSO_DATE/TIME_ON is missing or invalid');
+        } else if (seenHunters.has(callsign)) {
+          result = await this.storeRejectedQso(uploadId, user, park, callsign, qsoDatetime, record.BAND, record.MODE, 'DUPLICATE_HUNTER_IN_FILE', 'Only one QSO for a hunter callsign is accepted per ADIF file');
+        } else {
+          seenHunters.add(callsign);
+          result = await this.storeQso(uploadId, user, { parkReference: park.reference, qsoCallsign: callsign, qsoDatetime, band: record.BAND, mode: record.MODE });
+        }
+        if (result.accepted) validCount += 1;
+        else errorCount += 1;
+      }
+      await this.finishUpload(uploadId, records.length, validCount, errorCount);
+      await this.events.publish('mpota.adif.processed', { uploadId, userId: user.id, parkReference: park.reference, contactCount: records.length, validCount, errorCount });
+    } catch (error) {
+      await this.db.db.update(adifUploads).set({ status: 'FAILED', processedAt: new Date() }).where(eq(adifUploads.id, uploadId));
+      await this.events.publish('mpota.adif.failed', { uploadId, userId: user.id, error: error instanceof Error ? error.message : 'Unknown processing error' });
+    }
+  }
+
+  private async storeQso(uploadId: string, user: AuthUser, input: QsoInput): Promise<QsoResult> {
+    const park = await this.approvedPark(input.parkReference);
+    const qsoCallsign = normalizeCallsign(input.qsoCallsign);
+    if (!/^[A-Z0-9./-]{3,32}$/.test(qsoCallsign)) return this.storeRejectedQso(uploadId, user, park, qsoCallsign || 'UNKNOWN', input.qsoDatetime, input.band, input.mode, 'INVALID_CALLSIGN', 'Hunter callsign is invalid');
+    const qsoDateUtc = utcDay(input.qsoDatetime);
+    const [exact] = await this.db.db.select({ id: contacts.id }).from(contacts).where(and(
+      eq(contacts.userId, user.id), eq(contacts.parkId, park.id), eq(contacts.qsoCallsign, qsoCallsign),
+      eq(contacts.qsoDatetime, input.qsoDatetime), input.band ? eq(contacts.band, input.band) : isNull(contacts.band),
+      input.mode ? eq(contacts.mode, input.mode) : isNull(contacts.mode), eq(contacts.validity, 'VALID')
+    ));
+    const reason = exact ? 'DUPLICATE_QSO' : await this.isDailyDuplicate(user, park.id, qsoCallsign, qsoDateUtc) ? 'DUPLICATE_DAILY' : undefined;
+    if (reason) return this.storeRejectedQso(uploadId, user, park, qsoCallsign, input.qsoDatetime, input.band, input.mode, reason, reason === 'DUPLICATE_QSO' ? 'This QSO is already recorded' : 'Only one QSO per hunter, activator, park, and UTC day is counted');
+    try {
+      const [contact] = await this.db.db.insert(contacts).values({
+        uploadId, userId: user.id, parkId: park.id, parkReference: park.reference, qsoCallsign,
+        qsoDatetime: input.qsoDatetime, qsoDateUtc, band: input.band, mode: input.mode, validity: 'VALID'
+      }).returning({ id: contacts.id });
+      return { accepted: true, contactId: contact.id, validity: 'VALID' };
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      return this.storeRejectedQso(uploadId, user, park, qsoCallsign, input.qsoDatetime, input.band, input.mode, 'DUPLICATE_DAILY', 'Only one QSO per hunter, activator, park, and UTC day is counted');
+    }
+  }
+
+  private async storeRejectedQso(uploadId: string, user: AuthUser, park: typeof parks.$inferSelect, callsign: string, qsoDatetime: Date | undefined, band: string | undefined, mode: string | undefined, validity: string, errorMessage: string): Promise<QsoResult> {
+    const [contact] = await this.db.db.insert(contacts).values({
+      uploadId, userId: user.id, parkId: park.id, parkReference: park.reference, qsoCallsign: callsign,
+      qsoDatetime, qsoDateUtc: qsoDatetime ? utcDay(qsoDatetime) : undefined, band, mode, validity, errorMessage
+    }).returning({ id: contacts.id });
+    return { accepted: false, contactId: contact.id, validity, errorMessage };
+  }
+
+  private async isDailyDuplicate(user: AuthUser, parkId: string, callsign: string, qsoDateUtc: string) {
+    const [existing] = await this.db.db.select({ id: contacts.id }).from(contacts).where(and(
+      eq(contacts.userId, user.id), eq(contacts.parkId, parkId), eq(contacts.qsoCallsign, callsign),
+      eq(contacts.qsoDateUtc, qsoDateUtc), eq(contacts.validity, 'VALID')
+    ));
+    return Boolean(existing);
+  }
+
+  private async finishUpload(uploadId: string, contactCount: number, validCount: number, errorCount: number) {
+    return this.db.db.update(adifUploads).set({
+      status: errorCount ? 'PARTIAL' : 'COMPLETED', contactCount, validCount, errorCount, processedAt: new Date()
+    }).where(eq(adifUploads.id, uploadId));
+  }
+
+  private async approvedPark(reference: string) {
+    const [park] = await this.db.db.select().from(parks).where(and(eq(parks.reference, reference.trim().toUpperCase()), eq(parks.status, 'APPROVED')));
+    if (!park) throw new NotFoundException('Approved park not found');
+    return park;
+  }
+
+  private publicUpload(upload: typeof adifUploads.$inferSelect, park: typeof parks.$inferSelect) {
+    return {
+      id: upload.id, originalFilename: upload.originalFilename, source: upload.source, status: upload.status,
+      sizeBytes: upload.sizeBytes, contactCount: upload.contactCount, validCount: upload.validCount,
+      errorCount: upload.errorCount, uploadedAt: upload.uploadedAt, processedAt: upload.processedAt,
+      parkReference: park.reference, parkName: park.name
+    };
+  }
 
   private parseDate(record: AdifRecord) {
-    if (!record.QSO_DATE) return undefined;
-    const date = `${record.QSO_DATE.slice(0, 4)}-${record.QSO_DATE.slice(4, 6)}-${record.QSO_DATE.slice(6, 8)}T${(record.TIME_ON ?? '000000').padEnd(6, '0').slice(0, 2)}:${(record.TIME_ON ?? '000000').slice(2, 4)}:${(record.TIME_ON ?? '000000').slice(4, 6)}Z`;
+    if (!record.QSO_DATE || !/^\d{8}$/.test(record.QSO_DATE)) return undefined;
+    const time = (record.TIME_ON ?? '000000').replace(/\D/g, '').padEnd(6, '0').slice(0, 6);
+    const date = `${record.QSO_DATE.slice(0, 4)}-${record.QSO_DATE.slice(4, 6)}-${record.QSO_DATE.slice(6, 8)}T${time.slice(0, 2)}:${time.slice(2, 4)}:${time.slice(4, 6)}Z`;
     const parsed = new Date(date);
     return Number.isNaN(parsed.getTime()) ? undefined : parsed;
   }
