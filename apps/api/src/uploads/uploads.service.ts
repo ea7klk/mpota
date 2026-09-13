@@ -8,7 +8,7 @@ import { EventsService } from '../events/events.service';
 import { StorageService } from './storage.service';
 
 type AdifRecord = Record<string, string>;
-type QsoInput = { parkReference: string; qsoCallsign: string; qsoDatetime: Date; band?: string; mode?: string };
+type QsoInput = { parkReference: string; qsoCallsign: string; qsoDatetime: Date; frequency?: string; band?: string; mode?: string };
 type QsoResult = { accepted: boolean; contactId: string; validity: string; errorMessage?: string };
 
 function parseAdif(text: string): AdifRecord[] {
@@ -93,7 +93,7 @@ export class UploadsService {
     if (!upload) throw new NotFoundException('ADIF upload not found');
     return this.db.db.select({
       id: contacts.id, qsoCallsign: contacts.qsoCallsign, qsoDatetime: contacts.qsoDatetime,
-      qsoDateUtc: contacts.qsoDateUtc, band: contacts.band, mode: contacts.mode,
+      qsoDateUtc: contacts.qsoDateUtc, frequency: contacts.frequency, band: contacts.band, mode: contacts.mode,
       validity: contacts.validity, errorMessage: contacts.errorMessage
     }).from(contacts).where(and(eq(contacts.uploadId, uploadId), ne(contacts.validity, 'VALID'))).orderBy(contacts.qsoDatetime);
   }
@@ -110,12 +110,12 @@ export class UploadsService {
         const qsoDatetime = this.parseDate(record);
         let result: QsoResult;
         if (!qsoDatetime) {
-          result = await this.storeRejectedQso(uploadId, user, park, callsign || 'UNKNOWN', undefined, record.BAND, record.MODE, 'INVALID_DATE', 'QSO_DATE/TIME_ON is missing or invalid');
+          result = await this.storeRejectedQso(uploadId, user, park, callsign || 'UNKNOWN', undefined, record.FREQ, record.BAND, record.MODE, 'INVALID_DATE', 'QSO_DATE/TIME_ON is missing or invalid');
         } else if (seenHunters.has(callsign)) {
-          result = await this.storeRejectedQso(uploadId, user, park, callsign, qsoDatetime, record.BAND, record.MODE, 'DUPLICATE_HUNTER_IN_FILE', 'Only one QSO for a hunter callsign is accepted per ADIF file');
+          result = await this.storeRejectedQso(uploadId, user, park, callsign, qsoDatetime, record.FREQ, record.BAND, record.MODE, 'DUPLICATE_HUNTER_IN_FILE', 'Only one QSO for a hunter callsign is accepted per ADIF file');
         } else {
           seenHunters.add(callsign);
-          result = await this.storeQso(uploadId, user, { parkReference: park.reference, qsoCallsign: callsign, qsoDatetime, band: record.BAND, mode: record.MODE });
+          result = await this.storeQso(uploadId, user, { parkReference: park.reference, qsoCallsign: callsign, qsoDatetime, frequency: record.FREQ, band: record.BAND, mode: record.MODE });
         }
         if (result.accepted) validCount += 1;
         else errorCount += 1;
@@ -131,31 +131,31 @@ export class UploadsService {
   private async storeQso(uploadId: string, user: AuthUser, input: QsoInput): Promise<QsoResult> {
     const park = await this.approvedPark(input.parkReference);
     const qsoCallsign = normalizeCallsign(input.qsoCallsign);
-    if (!/^[A-Z0-9./-]{3,32}$/.test(qsoCallsign)) return this.storeRejectedQso(uploadId, user, park, qsoCallsign || 'UNKNOWN', input.qsoDatetime, input.band, input.mode, 'INVALID_CALLSIGN', 'Hunter callsign is invalid');
+    if (!/^[A-Z0-9./-]{3,32}$/.test(qsoCallsign)) return this.storeRejectedQso(uploadId, user, park, qsoCallsign || 'UNKNOWN', input.qsoDatetime, input.frequency, input.band, input.mode, 'INVALID_CALLSIGN', 'Hunter callsign is invalid');
     const qsoDateUtc = utcDay(input.qsoDatetime);
     const [exact] = await this.db.db.select({ id: contacts.id }).from(contacts).where(and(
       eq(contacts.userId, user.id), eq(contacts.parkId, park.id), eq(contacts.qsoCallsign, qsoCallsign),
       eq(contacts.qsoDatetime, input.qsoDatetime), input.band ? eq(contacts.band, input.band) : isNull(contacts.band),
-      input.mode ? eq(contacts.mode, input.mode) : isNull(contacts.mode), eq(contacts.validity, 'VALID')
+      input.mode ? eq(contacts.mode, input.mode) : isNull(contacts.mode), input.frequency ? eq(contacts.frequency, input.frequency) : isNull(contacts.frequency), eq(contacts.validity, 'VALID')
     ));
     const reason = exact ? 'DUPLICATE_QSO' : await this.isDailyDuplicate(user, park.id, qsoCallsign, qsoDateUtc) ? 'DUPLICATE_DAILY' : undefined;
-    if (reason) return this.storeRejectedQso(uploadId, user, park, qsoCallsign, input.qsoDatetime, input.band, input.mode, reason, reason === 'DUPLICATE_QSO' ? 'This QSO is already recorded' : 'Only one QSO per hunter, activator, park, and UTC day is counted');
+    if (reason) return this.storeRejectedQso(uploadId, user, park, qsoCallsign, input.qsoDatetime, input.frequency, input.band, input.mode, reason, reason === 'DUPLICATE_QSO' ? 'This QSO is already recorded' : 'Only one QSO per hunter, activator, park, and UTC day is counted');
     try {
       const [contact] = await this.db.db.insert(contacts).values({
         uploadId, userId: user.id, parkId: park.id, parkReference: park.reference, qsoCallsign,
-        qsoDatetime: input.qsoDatetime, qsoDateUtc, band: input.band, mode: input.mode, validity: 'VALID'
+        qsoDatetime: input.qsoDatetime, qsoDateUtc, frequency: input.frequency, band: input.band, mode: input.mode, validity: 'VALID'
       }).returning({ id: contacts.id });
       return { accepted: true, contactId: contact.id, validity: 'VALID' };
     } catch (error) {
       if (!isUniqueViolation(error)) throw error;
-      return this.storeRejectedQso(uploadId, user, park, qsoCallsign, input.qsoDatetime, input.band, input.mode, 'DUPLICATE_DAILY', 'Only one QSO per hunter, activator, park, and UTC day is counted');
+      return this.storeRejectedQso(uploadId, user, park, qsoCallsign, input.qsoDatetime, input.frequency, input.band, input.mode, 'DUPLICATE_DAILY', 'Only one QSO per hunter, activator, park, and UTC day is counted');
     }
   }
 
-  private async storeRejectedQso(uploadId: string, user: AuthUser, park: typeof parks.$inferSelect, callsign: string, qsoDatetime: Date | undefined, band: string | undefined, mode: string | undefined, validity: string, errorMessage: string): Promise<QsoResult> {
+  private async storeRejectedQso(uploadId: string, user: AuthUser, park: typeof parks.$inferSelect, callsign: string, qsoDatetime: Date | undefined, frequency: string | undefined, band: string | undefined, mode: string | undefined, validity: string, errorMessage: string): Promise<QsoResult> {
     const [contact] = await this.db.db.insert(contacts).values({
       uploadId, userId: user.id, parkId: park.id, parkReference: park.reference, qsoCallsign: callsign,
-      qsoDatetime, qsoDateUtc: qsoDatetime ? utcDay(qsoDatetime) : undefined, band, mode, validity, errorMessage
+      qsoDatetime, qsoDateUtc: qsoDatetime ? utcDay(qsoDatetime) : undefined, frequency, band, mode, validity, errorMessage
     }).returning({ id: contacts.id });
     return { accepted: false, contactId: contact.id, validity, errorMessage };
   }

@@ -22,6 +22,12 @@ class ManualQsoDto {
   @MaxLength(32)
   band?: string;
 
+  @ApiPropertyOptional({ example: '14.074', maxLength: 32, description: 'Operating frequency, normally expressed in MHz' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  frequency?: string;
+
   @ApiPropertyOptional({ example: 'SSB', maxLength: 32 })
   @IsOptional()
   @IsString()
@@ -42,6 +48,7 @@ export class UploadsController {
       parkReference: reference,
       qsoCallsign: body.qsoCallsign,
       qsoDatetime: new Date(body.qsoDatetime),
+      frequency: body.frequency,
       band: body.band,
       mode: body.mode
     });

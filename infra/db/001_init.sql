@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS adif_uploads (
 CREATE TABLE IF NOT EXISTS contacts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), upload_id uuid NOT NULL REFERENCES adif_uploads(id), user_id uuid NOT NULL REFERENCES users(id),
   park_id uuid REFERENCES parks(id), park_reference varchar(10), qso_callsign varchar(32) NOT NULL, qso_datetime timestamptz, qso_date_utc date,
-  band varchar(32), mode varchar(32), validity varchar(32) NOT NULL DEFAULT 'VALID', error_message text
+  frequency varchar(32), band varchar(32), mode varchar(32), validity varchar(32) NOT NULL DEFAULT 'VALID', error_message text
 );
 CREATE UNIQUE INDEX IF NOT EXISTS contacts_daily_hunter_unique
   ON contacts(user_id, park_id, qso_callsign, qso_date_utc)

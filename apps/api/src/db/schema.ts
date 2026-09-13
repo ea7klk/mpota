@@ -172,6 +172,7 @@ export const contacts = pgTable('contacts', {
   qsoCallsign: varchar('qso_callsign', { length: 32 }).notNull(),
   qsoDatetime: timestamp('qso_datetime'),
   qsoDateUtc: date('qso_date_utc'),
+  frequency: varchar('frequency', { length: 32 }),
   band: varchar('band', { length: 32 }),
   mode: varchar('mode', { length: 32 }),
   validity: varchar('validity', { length: 32 }).notNull().default('VALID'),
