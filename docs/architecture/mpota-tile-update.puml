@@ -1,5 +1,5 @@
 @startuml MPOTA_Tile_Update
-title MPOTA - tile set bootstrap and refresh
+title MPOTA - tile source selection and self-hosted refresh
 
 skinparam shadowing false
 skinparam backgroundColor #FAFBFC
@@ -16,6 +16,14 @@ skinparam note {
 }
 
 start
+if (Normal Docker development?) then (yes)
+  :Use public OpenStreetMap tile endpoint;
+  :Keep tile-bootstrap, tile-build,
+and TileServer GL stopped;
+  stop
+else (self-hosted path)
+  :Start Docker self-hosted profile\nor Kubernetes tile workload;
+endif
 :Start Docker Compose or Kubernetes tile workload;
 :Read configured source URL, source file,
 MBTiles file, checksum, required flag,
@@ -65,6 +73,13 @@ into the named volume or PVC;
     endif
   endif
 endif
+
+note right
+Normal Docker development uses the public OSM tile endpoint
+with linked attribution and no local tile import.
+Docker's self-hosted tile profile and Kubernetes production
+use the artifact lifecycle below.
+end note
 
 note right
 Docker: tile-bootstrap one-shot service + mpota-tile-data volume.

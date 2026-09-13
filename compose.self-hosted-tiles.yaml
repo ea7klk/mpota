@@ -1,0 +1,8 @@
+services:
+  web:
+    build:
+      args:
+        VITE_TILE_URL: ${MPOTA_LOCAL_TILE_URL:-http://localhost:8080/styles/basic/{z}/{x}/{y}.png}
+    depends_on:
+      api: { condition: service_started }
+      tileserver: { condition: service_started }

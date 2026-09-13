@@ -50,6 +50,7 @@ services:
     ports: ["8081:8080"]
 
   tile-bootstrap:
+    profiles: ["self-hosted-tiles"]
     image: alpine:3.22
     environment:
       MPOTA_TILESET_URL: ${MPOTA_TILESET_URL:-}
@@ -67,6 +68,7 @@ services:
       - ./infra/tiles/bootstrap-pbf.sh:/bootstrap/bootstrap.sh:ro
 
   tile-build:
+    profiles: ["self-hosted-tiles"]
     image: ghcr.io/systemed/tilemaker:master
     environment:
       MPOTA_TILESET_URL: ${MPOTA_TILESET_URL:-}
@@ -81,6 +83,7 @@ services:
       tile-bootstrap: { condition: service_completed_successfully }
 
   tileserver:
+    profiles: ["self-hosted-tiles"]
     # TileServer GL is also run as amd64 on Apple Silicon when ARM resolution
     # is unavailable; production already targets linux/amd64.
     platform: linux/amd64
@@ -131,9 +134,9 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         VITE_API_URL: http://localhost:3000/api/v1
-        VITE_TILE_URL: http://localhost:8080/styles/basic/{z}/{x}/{y}.png
+        VITE_TILE_URL: ${VITE_TILE_URL:-https://tile.openstreetmap.org/{z}/{x}/{y}.png}
     ports: ["5173:80"]
-    depends_on: [api, tileserver]
+    depends_on: [api]
 
 volumes:
   postgres-data:

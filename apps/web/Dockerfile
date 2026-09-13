@@ -1,7 +1,7 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 ARG VITE_API_URL=http://localhost:3000/api/v1
-ARG VITE_TILE_URL=http://localhost:8080/styles/basic/{z}/{x}/{y}.png
+ARG VITE_TILE_URL=https://tile.openstreetmap.org/{z}/{x}/{y}.png
 ENV VITE_API_URL=$VITE_API_URL
 ENV VITE_TILE_URL=$VITE_TILE_URL
 COPY package.json package-lock.json ./

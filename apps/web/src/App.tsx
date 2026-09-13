@@ -8,7 +8,8 @@ type Proposal = Park & { status: string; reviewNotes?: string };
 type Award = { id: string; key: string; name: string; description?: string; type: string; status: string; version: number };
 
 const API = import.meta.env.VITE_API_URL ?? 'http://localhost:3000/api/v1';
-const TILE_URL = import.meta.env.VITE_TILE_URL ?? 'http://localhost:8080/styles/basic/{z}/{x}/{y}.png';
+const TILE_URL = import.meta.env.VITE_TILE_URL ?? 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const TILE_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap contributors</a>';
 
 const copy: Record<Locale, Record<string, string>> = {
   en: { map: 'Map', propose: 'Propose a park', uploads: 'ADIF uploads', awards: 'Awards', admin: 'Moderation', signIn: 'Sign in', register: 'Register', signOut: 'Sign out', hero: 'Municipal parks on the air', heroText: 'Discover accessible places for amateur radio, propose a new park, and collect MPOTA awards.', approved: 'approved parks', choose: 'Choose a point on the map', submit: 'Submit proposal', email: 'Email', password: 'Password', name: 'Display name', callsign: 'Callsign', upload: 'Upload ADIF', loginRequired: 'Sign in to propose parks, upload logs, or manage MPOTA.', saveAward: 'Create award draft', publish: 'Publish', proposalQueue: 'Proposal queue' },
@@ -37,7 +38,7 @@ function MapView({ parks, picking, onPick }: { parks: Park[]; picking: boolean; 
   useEffect(() => {
     if (!element.current || map.current) return;
     map.current = L.map(element.current).setView([40.4168, -3.7038], 3);
-    L.tileLayer(TILE_URL, { attribution: '&copy; OpenStreetMap contributors' }).addTo(map.current);
+    L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map.current);
     markers.current = L.layerGroup().addTo(map.current);
     map.current.on('click', (event) => { if (pickingRef.current) onPickRef.current(event.latlng.lat, event.latlng.lng); });
     return () => { map.current?.remove(); map.current = null; };
@@ -106,6 +107,6 @@ export default function App() {
     </main>
     {authMode && <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={() => setAuthMode(null)}>×</button><p className="eyebrow">MPOTA account</p><h2>{authMode === 'login' ? t.signIn : t.register}</h2><form onSubmit={submitAuth}><label>{t.email}<input name="email" type="email" required /></label><label>{t.password}<input name="password" type="password" minLength={10} required /></label>{authMode === 'register' && <><label>{t.name}<input name="displayName" required /></label><label>{t.callsign}<input name="callsign" /></label></>}<button className="button full">{authMode === 'login' ? t.signIn : t.register}</button></form><button className="link-button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>{authMode === 'login' ? t.register : t.signIn}</button></div></div>}
     {proposalOpen && tab === 'propose' && <div className="modal-backdrop"><div className="modal"><button className="modal-close" onClick={() => setProposalOpen(false)}>×</button><p className="eyebrow">{point.latitude.toFixed(5)}, {point.longitude.toFixed(5)}</p><h2>{t.propose}</h2><p className="muted">Select a point on the map and use the full proposal form beside it.</p><button className="button full" onClick={() => setProposalOpen(false)}>Continue</button></div></div>}
-    <footer><span>MPOTA · Municipal Parks on the Air</span><span>OpenStreetMap attribution applies to the self-hosted basemap.</span></footer>
+    <footer><span>MPOTA · Municipal Parks on the Air</span><span>OpenStreetMap attribution and usage policy apply.</span></footer>
   </div>;
 }

@@ -76,12 +76,13 @@ package "Data boundary" {
 }
 
 package "Map boundary" {
-  component "Tile bootstrap/update job\nconfigured PBF or MBTiles artifact" as tile_bootstrap
-  component "PBF to MBTiles converter\ntilemaker" as tile_builder
-  component "Tile server\nOSM-compatible, self-hosted" as tile_server
+  component "Tile bootstrap/update job\nconfigured PBF or MBTiles artifact\nself-hosted path" as tile_bootstrap
+  component "PBF to MBTiles converter\ntilemaker\nself-hosted path" as tile_builder
+  component "Tile server\nOSM-compatible, self-hosted\nproduction / optional profile" as tile_server
   database "Tile database / cache" as tile_db
   component "OSM data import pipeline\nregional extracts + updates" as osm_import
   cloud "OSM source data\nlicense-compliant extracts" as osm_source
+  cloud "Public OSM tile endpoint\nnormal Docker development only" as public_osm_tiles
 }
 
 package "Delivery boundary" {
@@ -108,7 +109,8 @@ gateway --> upload : /uploads
 gateway --> stats : /stats, /awards
 gateway --> awards : /awards, /award-progress
 
-leaflet --> tile_server : XYZ tiles
+leaflet --> tile_server : XYZ tiles\nproduction / optional profile
+leaflet --> public_osm_tiles : XYZ tiles\nnormal development
 leaflet --> parks : approved GeoJSON
 gateway --> parks : public reads
 gateway --> moderation : authenticated writes
@@ -159,9 +161,10 @@ kube ..> tile_server : deploys
 compose ..> web : local test stack
 compose ..> gateway : local test stack
 compose ..> postgres : local test stack
-compose ..> tile_server : local test stack
-compose ..> tile_bootstrap : named-volume bootstrap
-compose ..> tile_builder : local PBF conversion
+compose ..> public_osm_tiles : default VITE_TILE_URL
+compose ..> tile_server : optional self-hosted profile
+compose ..> tile_bootstrap : optional profile bootstrap
+compose ..> tile_builder : optional profile conversion
 
 tile_bootstrap ..> compose : Docker one-shot service
 tile_bootstrap ..> kube : Kubernetes init container
