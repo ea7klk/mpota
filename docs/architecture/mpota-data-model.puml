@@ -1,5 +1,5 @@
 @startuml MPOTA_Data_Model
-title MPOTA — logical data model
+title MPOTA - logical data model
 
 hide methods
 hide stereotypes
@@ -54,12 +54,12 @@ package "Identity and authorization" {
     +created_at: datetime
   }
 
-  class ApprovalScopeCountry {
+  class ApprovalScopeCountry as scope_country {
     +approval_scope_id: UUID <<PK,FK>>
     +country_iso2: string <<PK,FK>>
   }
 
-  class ApprovalScopeContinent {
+  class ApprovalScopeContinent as scope_continent {
     +approval_scope_id: UUID <<PK,FK>>
     +continent_code: string <<PK,FK>>
   }
@@ -67,22 +67,20 @@ package "Identity and authorization" {
   User "1" -- "0..*" UserRole
   Role "1" -- "0..*" UserRole
   UserRole "1" -- "0..*" ApprovalScope
-  ApprovalScope "1" -- "0..*" ApprovalScopeCountry
-  ApprovalScope "1" -- "0..*" ApprovalScopeContinent
-  Country "1" -- "0..*" ApprovalScopeCountry
-  Continent "1" -- "0..*" ApprovalScopeContinent
+  ApprovalScope "1" -- "0..*" scope_country
+  ApprovalScope "1" -- "0..*" scope_continent
   User "0..*" -- "0..1" UserRole : granted_by
 }
 
 package "Reference catalog" {
-  class Country {
+  class Country as country {
     +iso2: string <<PK>>
     +iso3: string
     +name: string
     +continent_code: string
   }
 
-  class Continent {
+  class Continent as continent {
     +code: string <<PK>>
     +name: string
   }
@@ -114,10 +112,12 @@ package "Reference catalog" {
     +description: text?
   }
 
-  Continent "1" -- "0..*" Country
-  Country "1" -- "0..*" Park
+  continent "1" -- "0..*" country
+  country "1" -- "0..*" Park
   Park "1" -- "0..*" ParkTranslation
   User "0..*" -- "0..1" Park : approved_by
+  country "1" -- "0..*" scope_country
+  continent "1" -- "0..*" scope_continent
 }
 
 package "Proposal and moderation" {
@@ -162,7 +162,7 @@ package "Proposal and moderation" {
   ParkProposal "1" -- "0..*" ProposalTranslation
   ParkProposal "1" -- "0..*" ModerationDecision
   User "1" -- "0..*" ModerationDecision : decided_by
-  Country "1" -- "0..*" ParkProposal
+  country "1" -- "0..*" ParkProposal
 }
 
 package "Logging and outcomes" {

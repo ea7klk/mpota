@@ -1,5 +1,5 @@
 @startuml MPOTA_Flow
-title MPOTA — end-to-end user and moderation flows
+title MPOTA - end-to-end user and moderation flows
 
 skinparam shadowing false
 skinparam backgroundColor #FAFBFC
@@ -26,19 +26,14 @@ endlegend
 
 start
 :Visitor opens MPOTA;
-Map UI requests approved entities;
-API returns approved parks only;
-Tile URL points to self-hosted OSM-compatible tile service;
+:Map UI requests approved entities;
+:API returns approved parks only;
+:Tile URL points to self-hosted OSM-compatible tile service;
 
 if (User registered?) then (no)
-  :Browse approved parks,
-  search by reference/name,
-  view park details,
-  view public activations;
+  :Browse approved parks,\nsearch by reference/name,\nview park details,\nview public activations;
   :Choose Register;
-  :Create account with email,
-  password, display name,
-  callsign and locale;
+  :Create account with email,\npassword, display name,\ncallsign and locale;
   :Verify email;
   if (Account verification succeeds?) then (yes)
     :Account becomes ACTIVE;
@@ -60,38 +55,26 @@ partition "Registered user: propose a municipal park" {
   :Open map and choose Propose park;
   :Click map location or drag marker;
   :Reverse geocode through configured geocoder;
-  :Pre-fill latitude, longitude,
-  country, country code,
-  region and locality;
-  :Complete localized proposal form:
-  park name, type, description,
-  source URL, access notes,
-  photo URL or upload;
+  :Pre-fill latitude, longitude,\ncountry, country code,\nregion and locality;
+  :Complete localized proposal form:\npark name, type, description,\nsource URL, access notes,\nphoto URL or upload;
   :Submit proposal;
-  :API validates coordinates,
-  ISO country, required fields,
-  URL/file rules and consent;
+  :API validates coordinates,\nISO country, required fields,\nURL/file rules and consent;
   if (Valid proposal?) then (no)
     :Return field-level errors;
   else (yes)
     :Store proposal as PENDING;
     :Write moderation audit event;
-    :Notify approvers whose scope covers
-    the proposal country or continent;
+    :Notify approvers whose scope covers\nthe proposal country or continent;
   endif
 }
 
 partition "Approver: review queue" {
   :Open moderation queue;
-  :API filters pending proposals by
-  approver scope: selected countries,
-  selected continents, or ALL;
+  :API filters pending proposals by\napprover scope: selected countries,\nselected continents, or ALL;
   if (Proposal in approver scope?) then (no)
     :Do not expose proposal for action;
   else (yes)
-    :Review map location,
-    source evidence, duplicate candidates,
-    access notes and translated content;
+    :Review map location,\nsource evidence, duplicate candidates,\naccess notes and translated content;
     if (Approve?) then (yes)
       :Begin transaction;
       :Allocate next country-local sequence;
@@ -125,11 +108,8 @@ partition "ADIF logging" {
     :Notify uploader;
   else (yes)
     :Queue asynchronous ADIF processing;
-    :Parse contacts and normalize callsigns,
-    timestamps, bands, modes and references;
-    :Validate required ADIF fields,
-    approved park reference,
-    activation rules and duplicates;
+    :Parse contacts and normalize callsigns,\ntimestamps, bands, modes and references;
+    :Validate required ADIF fields,\napproved park reference,\nactivation rules and duplicates;
     if (Validation passes?) then (yes)
       :Persist log and contact records;
       :Recalculate activator/hunter statistics;
@@ -144,14 +124,12 @@ partition "ADIF logging" {
 
 partition "Administration" {
   :Admin creates or edits user role;
-  :Select approval scopes using multi-select:
-  countries and/or continents;
+  :Select approval scopes using multi-select:\ncountries and/or continents;
   :Optionally select ALL countries;
   :Persist role and scope audit event;
   :Scope changes affect future queue access;
 }
 
-:All public read endpoints enforce
-park.status = APPROVED;
+:All public read endpoints enforce\npark.status = APPROVED;
 stop
 @enduml

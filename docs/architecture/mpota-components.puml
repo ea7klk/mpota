@@ -1,5 +1,5 @@
 @startuml MPOTA_Components
-title MPOTA — API-first components and deployment topology
+title MPOTA - API-first components and deployment topology
 
 left to right direction
 skinparam shadowing false
@@ -86,8 +86,7 @@ package "Delivery boundary" {
 }
 
 visitor --> web : browse/search
-member --> web : register, propose,
-upload ADIF, view stats
+member --> web : register, propose,\nupload ADIF, view stats
 approver --> web : review and approve
 admin --> web : manage users/scopes
 
