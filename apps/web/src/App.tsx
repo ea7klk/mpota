@@ -92,7 +92,8 @@ function MapView({ parks, picking, selectedPoint, view, onPick, onViewChange, on
           ({ coords }) => {
             button.classList.remove('is-loading');
             button.title = 'Go to my location';
-            map.current?.setView([coords.latitude, coords.longitude], Math.max(map.current?.getZoom() ?? 15, 15));
+            // Leaflet zoom 14 shows approximately a 5 km neighborhood at typical MPOTA latitudes.
+            map.current?.setView([coords.latitude, coords.longitude], 14);
           },
           () => {
             button.classList.remove('is-loading');
