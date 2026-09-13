@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Patch, Post, Query, Res, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { ApiBearerAuth, ApiBody, ApiConsumes, ApiOperation, ApiProperty, ApiPropertyOptional, ApiTags } from '@nestjs/swagger';
 import { IsInt, IsLatitude, IsLongitude, IsOptional, IsString, IsUrl, Length, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CurrentUser, Roles } from '../auth/auth.decorators';
@@ -106,9 +108,37 @@ export class ParksController {
   list() { return this.parks.approved(); }
 
   @Public()
+  @Get('parks/:reference/images')
+  @ApiOperation({ summary: 'List images for one approved park' })
+  images(@Param('reference') reference: string) { return this.parks.listImages(reference); }
+
+  @Public()
+  @Get('parks/:reference/images/:imageId')
+  @ApiOperation({ summary: 'Serve one image for an approved park' })
+  async image(@Param('reference') reference: string, @Param('imageId') imageId: string, @Res() response: Response) {
+    const image = await this.parks.getImage(reference, imageId);
+    response.type(image.contentType).send(image.body);
+  }
+
+  @Public()
   @Get('parks/:reference')
   @ApiOperation({ summary: 'Get one approved park by reference' })
   find(@Param('reference') reference: string) { return this.parks.findApproved(reference); }
+
+  @Public()
+  @Get('parks/:reference/detail')
+  @ApiOperation({ summary: 'Get approved park details, images, activations, and leaders' })
+  detail(@Param('reference') reference: string) { return this.parks.detail(reference); }
+
+  @Post('parks/:reference/images')
+  @ApiBearerAuth()
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary', description: 'JPEG, PNG, WebP, or GIF park image' } } } })
+  @ApiOperation({ summary: 'Upload an image for an approved park' })
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: Number(process.env.PARK_IMAGE_MAX_BYTES ?? 10 * 1024 * 1024) } }))
+  uploadImage(@CurrentUser() user: AuthUser, @Param('reference') reference: string, @UploadedFile() file: Express.Multer.File) {
+    return this.parks.uploadImage(user, reference, file);
+  }
 
   @Post('proposals')
   @ApiBearerAuth()

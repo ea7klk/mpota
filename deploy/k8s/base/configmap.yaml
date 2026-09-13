@@ -13,6 +13,8 @@ data:
   REDIS_URL: redis://redis:6379
   S3_REGION: us-east-1
   S3_BUCKET: mpota
+  S3_PARK_IMAGES_BUCKET: mpota-park-images
+  PARK_IMAGE_MAX_BYTES: "10485760"
   S3_ENDPOINT: http://minio:9000
 ---
 apiVersion: v1

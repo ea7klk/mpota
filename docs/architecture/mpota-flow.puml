@@ -68,6 +68,17 @@ partition "Registered user: propose a municipal park" {
   endif
 }
 
+partition "Registered user: contribute park images" {
+  :Open an approved park detail;
+  :Choose a JPEG, PNG, WebP, or GIF image;
+  :API validates type and size;
+  :Allocate the next park image serial;
+  :Store in private bucket at\ncontinent/country/reference-serial;
+  :Save image metadata and audit event;
+  :Show a thumbnail in park details;
+  :Open the stored image at full size when clicked;
+}
+
 partition "Approver: review queue" {
   :Open moderation queue;
   :API filters pending proposals by\napprover scope: selected countries,\nselected continents, or ALL;

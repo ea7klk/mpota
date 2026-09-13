@@ -5,9 +5,11 @@ The running API publishes interactive Swagger UI at `/docs` and the OpenAPI JSON
 - <http://localhost:3000/docs>
 - <http://localhost:3000/docs-json>
 
-The API is versioned under `/api/v1` and uses bearer authentication for registered-user and administrator operations. The public map endpoint is `GET /api/v1/parks` and returns approved parks only.
+The API is versioned under `/api/v1` and uses bearer authentication for registered-user and administrator operations. The public map endpoint is `GET /api/v1/parks` and returns approved parks only. `GET /api/v1/parks/{reference}/detail` returns the complete public park profile, activity summary, activations, park leaders, and image metadata.
 
-The main domains are authentication, approved parks, proposals/moderation, awards, ADIF uploads, and global user administration. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
+The main domains are authentication, approved parks, park image uploads, proposals/moderation, awards, ADIF uploads, and global user administration. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
+
+Registered users can upload JPEG, PNG, WebP, or GIF images with `POST /api/v1/parks/{reference}/images`. Binary files are kept in the dedicated `S3_PARK_IMAGES_BUCKET` under `CONTINENT/COUNTRY/{reference}-{serial}.{extension}`. `GET /api/v1/parks/{reference}/images` lists image metadata, and the returned image URLs serve approved-park images for thumbnails and full-size viewing.
 
 ## Local bootstrap administrator
 

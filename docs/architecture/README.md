@@ -31,6 +31,8 @@ plantuml docs/architecture/mpota-tile-update.puml
 - Award Admins create and maintain award drafts; Global Admins publish, retire, and override awards.
 - Global Admins may approve/remove entities and deactivate/delete users. Destructive actions are audited and user deletion defaults to deactivation/anonymization when historical logs require retention.
 - Registered users may submit proposals from the map. Submissions remain pending until an authorized approver approves them.
+- Registered users may upload park images after approval. Image metadata is stored in PostgreSQL while binary files use the dedicated private `mpota-park-images` bucket with keys under `CONTINENT/COUNTRY/PARK-REFERENCE-serial.extension`; the API serves approved-park images for thumbnails and full-size viewing.
+- Selecting a map entity navigates to a dedicated MPOTA park profile page. The page combines park facts, its location map, community images, activation history, aggregate QSOs, and derived activator/hunter leaderboards; POTA-specific early/late shift times are intentionally omitted.
 - ADIF files are uploaded to object storage, scanned, parsed, validated, and processed asynchronously. The audit trail keeps the original file metadata and processing result.
 - English, Spanish, French, and German are modeled as locale-aware UI and park-content translations.
 - Normal Docker development uses the public `https://tile.openstreetmap.org/{z}/{x}/{y}.png` endpoint with linked attribution; it does not start the local tile server or tile import process. The self-hosted Compose profile remains available for testing the production-like tile path.

@@ -1,8 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { and, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, count, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
 import { DbService } from '../db/db.service';
-import { approvalScopes, auditEvents, countrySequences, moderationDecisions, parkProposals, parks } from '../db/schema';
+import { approvalScopes, auditEvents, countrySequences, moderationDecisions, parkImages, parkProposals, parks } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
+import { StorageService } from '../uploads/storage.service';
 
 export type ProposalInput = {
   countryIso2: string;
@@ -36,9 +37,140 @@ export type ReverseGeocodeInput = { latitude: number; longitude: number };
 export type ParkAdminQuery = { page?: number; pageSize?: number; continentCode?: string; countryIso2?: string; region?: string; locality?: string };
 export type ParkUpdateInput = { countryIso2?: string; continentCode?: string; region?: string | null; locality?: string | null; latitude?: number; longitude?: number; parkType?: string; name?: string; description?: string | null; sourceUrl?: string | null; accessNotes?: string | null; photoUrl?: string | null };
 
+export type ParkImage = {
+  id: string;
+  imageNumber: number;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number;
+  createdAt: Date;
+  url: string;
+};
+
+const PARK_IMAGE_BUCKET = process.env.S3_PARK_IMAGES_BUCKET ?? 'mpota-park-images';
+const MAX_PARK_IMAGE_BYTES = Number(process.env.PARK_IMAGE_MAX_BYTES ?? 10 * 1024 * 1024);
+const PARK_IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp', 'image/gif': 'gif' };
+
 @Injectable()
 export class ParksService {
-  constructor(private readonly db: DbService) {}
+  constructor(private readonly db: DbService, private readonly storage: StorageService) {}
+
+  async listImages(reference: string) {
+    const park = await this.findApproved(reference);
+    const images = await this.db.db.select({
+      id: parkImages.id, imageNumber: parkImages.imageNumber, originalFilename: parkImages.originalFilename,
+      contentType: parkImages.contentType, sizeBytes: parkImages.sizeBytes, createdAt: parkImages.createdAt
+    }).from(parkImages).where(eq(parkImages.parkId, park.id)).orderBy(asc(parkImages.imageNumber));
+    return { parkReference: park.reference, images: images.map((image) => ({ ...image, url: `/parks/${park.reference}/images/${image.id}` })) };
+  }
+
+  async getImage(reference: string, imageId: string) {
+    const [image] = await this.db.db.select({
+      objectKey: parkImages.objectKey, contentType: parkImages.contentType, parkReference: parks.reference
+    }).from(parkImages).innerJoin(parks, eq(parkImages.parkId, parks.id)).where(and(
+      eq(parkImages.id, imageId), eq(parks.reference, reference.toUpperCase()), eq(parks.status, 'APPROVED')
+    ));
+    if (!image) throw new NotFoundException('Park image not found');
+    return this.storage.get(image.objectKey, PARK_IMAGE_BUCKET);
+  }
+
+  async detail(reference: string) {
+    const park = await this.findApproved(reference);
+    const imageResult = await this.listImages(park.reference);
+    const activations = await this.db.db.execute(sql`
+      SELECT
+        COALESCE(c.qso_datetime::date, u.uploaded_at::date)::text AS date,
+        COALESCE(NULLIF(uploader.callsign, ''), uploader.display_name) AS callsign,
+        COUNT(*)::int AS total_qsos,
+        COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) = 'CW')::int AS cw,
+        COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) IN ('SSB', 'AM', 'FM', 'USB', 'LSB', 'PHONE'))::int AS phone,
+        COUNT(*) FILTER (WHERE upper(COALESCE(c.mode, '')) NOT IN ('CW', 'SSB', 'AM', 'FM', 'USB', 'LSB', 'PHONE'))::int AS data
+      FROM contacts c
+      INNER JOIN adif_uploads u ON u.id = c.upload_id
+      INNER JOIN users uploader ON uploader.id = c.user_id
+      WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+      GROUP BY 1, 2
+      ORDER BY date DESC, total_qsos DESC
+      LIMIT 100
+    `);
+    const summary = await this.db.db.execute(sql`
+      SELECT
+        COUNT(DISTINCT COALESCE(c.qso_datetime::date, u.uploaded_at::date))::int AS activation_count,
+        COUNT(*)::int AS total_qsos,
+        MIN(COALESCE(c.qso_datetime::date, u.uploaded_at::date))::text AS first_activation
+      FROM contacts c
+      INNER JOIN adif_uploads u ON u.id = c.upload_id
+      WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+    `);
+    const activatorLeaders = await this.db.db.execute(sql`
+      SELECT
+        COALESCE(NULLIF(uploader.callsign, ''), uploader.display_name) AS callsign,
+        uploader.display_name,
+        COUNT(DISTINCT COALESCE(c.qso_datetime::date, u.uploaded_at::date))::int AS activations,
+        COUNT(*)::int AS qsos
+      FROM contacts c
+      INNER JOIN adif_uploads u ON u.id = c.upload_id
+      INNER JOIN users uploader ON uploader.id = c.user_id
+      WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+      GROUP BY uploader.id, uploader.callsign, uploader.display_name
+      ORDER BY activations DESC, qsos DESC, callsign
+      LIMIT 10
+    `);
+    const hunterLeaders = await this.db.db.execute(sql`
+      SELECT c.qso_callsign AS callsign, COUNT(*)::int AS qsos
+      FROM contacts c
+      WHERE c.park_id = ${park.id} AND c.validity = 'VALID'
+      GROUP BY c.qso_callsign
+      ORDER BY qsos DESC, callsign
+      LIMIT 10
+    `);
+    const activationRows = activations.rows as Array<{ date: string; callsign: string; total_qsos: number }>;
+    const [summaryRow] = summary.rows as Array<{ activation_count: number; total_qsos: number; first_activation: string | null }>;
+    return {
+      ...park,
+      images: imageResult.images,
+      stats: {
+        activationCount: Number(summaryRow?.activation_count ?? 0),
+        totalQsos: Number(summaryRow?.total_qsos ?? 0),
+        firstActivation: summaryRow?.first_activation ?? null
+      },
+      activations: activations.rows,
+      leaders: { activators: activatorLeaders.rows, hunters: hunterLeaders.rows }
+    };
+  }
+
+  async uploadImage(user: AuthUser, reference: string, file: Express.Multer.File) {
+    const contentType = file?.mimetype ?? '';
+    if (!file || !PARK_IMAGE_TYPES[contentType]) throw new BadRequestException('Upload a JPEG, PNG, WebP, or GIF image');
+    if (file.size > MAX_PARK_IMAGE_BYTES) throw new BadRequestException(`Park images must be smaller than ${Math.floor(MAX_PARK_IMAGE_BYTES / 1024 / 1024)} MB`);
+
+    const [park] = await this.db.db.select().from(parks).where(and(eq(parks.reference, reference.toUpperCase()), eq(parks.status, 'APPROVED')));
+    if (!park) throw new NotFoundException('Approved park not found');
+
+    let objectKey: string | undefined;
+    try {
+      return await this.db.db.transaction(async (tx) => {
+        await tx.execute(sql`SELECT id FROM parks WHERE id = ${park.id} FOR UPDATE`);
+        const [last] = await tx.select({ imageNumber: sql<number>`coalesce(max(${parkImages.imageNumber}), 0)` }).from(parkImages).where(eq(parkImages.parkId, park.id));
+        const imageNumber = Number(last?.imageNumber ?? 0) + 1;
+        const extension = PARK_IMAGE_TYPES[contentType];
+        objectKey = `${park.continentCode}/${park.countryIso2}/${park.reference}-${String(imageNumber).padStart(3, '0')}.${extension}`;
+        await this.storage.put(objectKey, file.buffer, contentType, PARK_IMAGE_BUCKET);
+        const [image] = await tx.insert(parkImages).values({
+          parkId: park.id, uploadedBy: user.id, imageNumber, objectKey,
+          originalFilename: file.originalname, contentType, sizeBytes: file.size
+        }).returning({
+          id: parkImages.id, imageNumber: parkImages.imageNumber, originalFilename: parkImages.originalFilename,
+          contentType: parkImages.contentType, sizeBytes: parkImages.sizeBytes, createdAt: parkImages.createdAt
+        });
+        await tx.insert(auditEvents).values({ actorId: user.id, action: 'PARK_IMAGE_UPLOADED', entityType: 'park', entityId: park.id, afterJson: { imageId: image.id, objectKey } });
+        return { ...image, url: `/parks/${park.reference}/images/${image.id}` };
+      });
+    } catch (error) {
+      if (objectKey) await this.storage.delete(objectKey, PARK_IMAGE_BUCKET).catch(() => undefined);
+      throw error;
+    }
+  }
 
   async approved() {
     return this.db.db.select({

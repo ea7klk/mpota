@@ -1,5 +1,5 @@
 import { relations } from 'drizzle-orm';
-import { boolean, geometry, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean, geometry, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const userStatus = pgEnum('user_status', ['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'DEACTIVATED', 'DELETED']);
 export const userRole = pgEnum('user_role', ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN']);
@@ -58,6 +58,18 @@ export const parks = pgTable('parks', {
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
+
+export const parkImages = pgTable('park_images', {
+  id: uuid('id').defaultRandom().primaryKey(),
+  parkId: uuid('park_id').notNull().references(() => parks.id),
+  uploadedBy: uuid('uploaded_by').notNull().references(() => users.id),
+  imageNumber: integer('image_number').notNull(),
+  objectKey: text('object_key').notNull().unique(),
+  originalFilename: text('original_filename').notNull(),
+  contentType: varchar('content_type', { length: 100 }).notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: timestamp('created_at').notNull().defaultNow()
+}, (table) => ({ parkImageNumberUnique: uniqueIndex('park_images_park_number_unique').on(table.parkId, table.imageNumber) }));
 
 export const parkProposals = pgTable('park_proposals', {
   id: uuid('id').defaultRandom().primaryKey(),

@@ -56,12 +56,12 @@ package "Identity and authorization" {
     +created_at: datetime
   }
 
-  class ApprovalScopeCountry as scope_country {
+  class ApprovalScopeCountry {
     +approval_scope_id: UUID <<PK,FK>>
     +country_iso2: string <<PK,FK>>
   }
 
-  class ApprovalScopeContinent as scope_continent {
+  class ApprovalScopeContinent {
     +approval_scope_id: UUID <<PK,FK>>
     +continent_code: string <<PK,FK>>
   }
@@ -69,20 +69,20 @@ package "Identity and authorization" {
   User "1" -- "0..*" UserRole
   Role "1" -- "0..*" UserRole
   UserRole "1" -- "0..*" ApprovalScope
-  ApprovalScope "1" -- "0..*" scope_country
-  ApprovalScope "1" -- "0..*" scope_continent
+  ApprovalScope "1" -- "0..*" ApprovalScopeCountry
+  ApprovalScope "1" -- "0..*" ApprovalScopeContinent
   User "0..*" -- "0..1" UserRole : granted_by
 }
 
 package "Reference catalog" {
-  class Country as country {
+  class Country {
     +iso2: string <<PK>>
     +iso3: string
     +name: string
     +continent_code: string
   }
 
-  class Continent as continent {
+  class Continent {
     +code: string <<PK>>
     +name: string
   }
@@ -114,12 +114,26 @@ package "Reference catalog" {
     +description: text?
   }
 
-  continent "1" -- "0..*" country
-  country "1" -- "0..*" Park
+  class ParkImage {
+    +id: UUID <<PK>>
+    +park_id: UUID <<FK>>
+    +uploaded_by: UUID <<FK>>
+    +image_number: integer
+    +object_key: string <<unique>>
+    +original_filename: string
+    +content_type: string
+    +size_bytes: integer
+    +created_at: datetime
+  }
+
+  Continent "1" -- "0..*" Country
+  Country "1" -- "0..*" Park
   Park "1" -- "0..*" ParkTranslation
+  Park "1" -- "0..*" ParkImage
+  User "1" -- "0..*" ParkImage : uploaded_by
   User "0..*" -- "0..1" Park : approved_by
-  country "1" -- "0..*" scope_country
-  continent "1" -- "0..*" scope_continent
+  Country "1" -- "0..*" ApprovalScopeCountry
+  Continent "1" -- "0..*" ApprovalScopeContinent
 }
 
 package "Proposal and moderation" {
@@ -164,7 +178,7 @@ package "Proposal and moderation" {
   ParkProposal "1" -- "0..*" ProposalTranslation
   ParkProposal "1" -- "0..*" ModerationDecision
   User "1" -- "0..*" ModerationDecision : decided_by
-  country "1" -- "0..*" ParkProposal
+  Country "1" -- "0..*" ParkProposal
 }
 
 package "Logging and outcomes" {
@@ -226,7 +240,7 @@ package "Logging and outcomes" {
 }
 
 package "Awards" {
-  class Award as award {
+  class Award {
     +id: UUID <<PK>>
     +key: string <<unique>>
     +status: AwardStatus
@@ -238,14 +252,14 @@ package "Awards" {
     +retired_at: datetime?
   }
 
-  class AwardTranslation as award_translation {
+  class AwardTranslation {
     +award_id: UUID <<PK,FK>>
     +locale: Locale <<PK>>
     +name: string
     +description: text?
   }
 
-  class AwardVersion as award_version {
+  class AwardVersion {
     +id: UUID <<PK>>
     +award_id: UUID <<FK>>
     +version_number: integer
@@ -254,24 +268,24 @@ package "Awards" {
     +created_at: datetime
   }
 
-  class AwardRule as award_rule {
+  class AwardRule {
     +id: UUID <<PK>>
     +award_version_id: UUID <<FK>>
     +rule_type: string
     +rule_definition: json
   }
 
-  class AwardScopeCountry as award_scope_country {
+  class AwardScopeCountry {
     +award_id: UUID <<PK,FK>>
     +country_iso2: string <<PK,FK>>
   }
 
-  class AwardScopeContinent as award_scope_continent {
+  class AwardScopeContinent {
     +award_id: UUID <<PK,FK>>
     +continent_code: string <<PK,FK>>
   }
 
-  class AwardProgress as award_progress {
+  class AwardProgress {
     +user_id: UUID <<PK,FK>>
     +award_id: UUID <<PK,FK>>
     +current_value: decimal
@@ -280,7 +294,7 @@ package "Awards" {
     +updated_at: datetime
   }
 
-  class AwardGrant as award_grant {
+  class AwardGrant {
     +id: UUID <<PK>>
     +user_id: UUID <<FK>>
     +award_id: UUID <<FK>>
@@ -289,20 +303,20 @@ package "Awards" {
     +granted_at: datetime
   }
 
-  award "1" -- "0..*" award_translation
-  award "1" -- "0..*" award_version
-  award_version "1" -- "0..*" award_rule
-  award "1" -- "0..*" award_scope_country
-  award "1" -- "0..*" award_scope_continent
-  country "1" -- "0..*" award_scope_country
-  continent "1" -- "0..*" award_scope_continent
-  User "1" -- "0..*" award : created_by
-  User "0..*" -- "0..1" award : published_by
-  User "1" -- "0..*" award_progress
-  award "1" -- "0..*" award_progress
-  User "1" -- "0..*" award_grant
-  award "1" -- "0..*" award_grant
-  award_version "1" -- "0..*" award_grant
+  Award "1" -- "0..*" AwardTranslation
+  Award "1" -- "0..*" AwardVersion
+  AwardVersion "1" -- "0..*" AwardRule
+  Award "1" -- "0..*" AwardScopeCountry
+  Award "1" -- "0..*" AwardScopeContinent
+  Country "1" -- "0..*" AwardScopeCountry
+  Continent "1" -- "0..*" AwardScopeContinent
+  User "1" -- "0..*" Award : created_by
+  User "0..*" -- "0..1" Award : published_by
+  User "1" -- "0..*" AwardProgress
+  Award "1" -- "0..*" AwardProgress
+  User "1" -- "0..*" AwardGrant
+  Award "1" -- "0..*" AwardGrant
+  AwardVersion "1" -- "0..*" AwardGrant
 }
 
 package "Operational audit" {
@@ -419,7 +433,8 @@ enum AwardProgressStatus {
   EARNED
 }
 
-note "Reference invariant" as reference_rule
+note right of Park
+  Reference invariant
   Park.reference is generated only inside the approval transaction:
   `MP` + uppercase Country.iso2 + `-` + LPAD(country sequence, 5, '0')
   Example: MPCS-00001
@@ -427,13 +442,15 @@ note "Reference invariant" as reference_rule
   a database unique constraint and transactional allocation.
 end note
 
-note "Visibility invariant" as visibility_rule
+note left of Park
+  Visibility invariant
   Public map, search, park-detail, and GeoJSON endpoints may return only
   Park.status = APPROVED. Authorization to see a pending proposal is a
   separate moderation-queue permission.
 end note
 
-note "Approval scope invariant" as scope_rule
+note right of ApprovalScope
+  Approval scope invariant
   An approver is eligible when:
   - an active ApprovalScope has all_countries = true; or
   - the proposal country_iso2 is in country_codes; or
@@ -444,23 +461,20 @@ note "Approval scope invariant" as scope_rule
   global option.
 end note
 
-note "Award governance invariant" as award_rule
+note right of Award
+  Award governance invariant
   Award Admins may create and edit draft awards and their localized
   content. Global Admins publish, retire, or override awards. A published
   AwardVersion and its rules are immutable; new criteria require a new
   version. Award evaluation uses the version valid for the qualifying data.
 end note
 
-note "PostGIS invariant" as geo_rule
+note bottom of Park
+  PostGIS invariant
   Store a generated geometry(Point, 4326) from latitude/longitude for
   spatial indexes, duplicate-distance checks, bounding-box map queries,
   and future boundary validation. Cast to geography for geodesic distance
   calculations where needed.
 end note
 
-Park .. reference_rule
-Park .. visibility_rule
-ApprovalScope .. scope_rule
-award .. award_rule
-Park .. geo_rule
 @enduml

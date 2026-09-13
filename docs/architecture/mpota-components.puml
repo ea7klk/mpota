@@ -69,10 +69,10 @@ package "MPOTA backend" {
 }
 
 package "Data boundary" {
-  database "PostgreSQL + PostGIS\nusers, parks, proposals, scopes, logs" as postgres
+  database "PostgreSQL + PostGIS\nusers, parks, proposals, scopes, logs, image metadata" as postgres
   queue "Message broker\nprocessing and notifications" as broker
   database "Redis\ncache, rate limits, jobs" as redis
-  cloud "Private object storage\nADIF and park media" as object_store
+  cloud "Private object storage\nADIF bucket + dedicated park-images bucket" as object_store
 }
 
 package "Map boundary" {
@@ -108,6 +108,7 @@ gateway --> moderation : /proposals, /approvals
 gateway --> upload : /uploads
 gateway --> stats : /stats, /awards
 gateway --> awards : /awards, /award-progress
+gateway --> parks : /parks/:reference/images
 
 leaflet --> tile_server : XYZ tiles\nproduction / optional profile
 leaflet --> public_osm_tiles : XYZ tiles\nnormal development
@@ -117,6 +118,7 @@ gateway --> moderation : authenticated writes
 gateway --> upload : authenticated writes
 
 parks --> postgres : approved catalog
+parks --> object_store : park images\ncontinent/country/reference-serial
 parks --> redis : cached map/search
 parks --> audit : catalog events
 moderation --> policy : evaluate actor scope
