@@ -104,7 +104,11 @@ services:
       DATABASE_URL: postgres://mpota:mpota@postgres:5432/mpota
       JWT_SECRET: dev-only-change-me
       AUTH_MODE: local
-      BOOTSTRAP_ADMIN_EMAIL: admin@mpota.local
+      BOOTSTRAP_ADMIN_EMAIL: ${BOOTSTRAP_ADMIN_EMAIL:-}
+      BOOTSTRAP_ADMIN_PASSWORD: ${BOOTSTRAP_ADMIN_PASSWORD:-}
+      BOOTSTRAP_ADMIN_NAME: ${BOOTSTRAP_ADMIN_NAME:-MPOTA Administrator}
+      BOOTSTRAP_ADMIN_CALLSIGN: ${BOOTSTRAP_ADMIN_CALLSIGN:-}
+      BOOTSTRAP_ADMIN_LOCALE: ${BOOTSTRAP_ADMIN_LOCALE:-en}
       NATS_URL: nats://nats:4222
       S3_ENDPOINT: http://minio:9000
       S3_REGION: us-east-1

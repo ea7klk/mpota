@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, OnModuleInit, UnauthorizedException } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { SignJWT } from 'jose';
 import * as bcrypt from 'bcryptjs';
@@ -8,8 +8,26 @@ import { users } from '../db/schema';
 export type AuthInput = { id: string; email: string; displayName: string; role: string; locale: string };
 
 @Injectable()
-export class AuthService {
+export class AuthService implements OnModuleInit {
   constructor(private readonly db: DbService) {}
+
+  async onModuleInit() {
+    const email = process.env.BOOTSTRAP_ADMIN_EMAIL?.trim().toLowerCase();
+    const password = process.env.BOOTSTRAP_ADMIN_PASSWORD;
+    if (!email || !password) return;
+
+    const [created] = await this.db.db.insert(users).values({
+      email,
+      passwordHash: await bcrypt.hash(password, 12),
+      displayName: process.env.BOOTSTRAP_ADMIN_NAME?.trim() || 'MPOTA Administrator',
+      callsign: process.env.BOOTSTRAP_ADMIN_CALLSIGN?.trim().toUpperCase() || null,
+      locale: process.env.BOOTSTRAP_ADMIN_LOCALE?.trim() || 'en',
+      status: 'ACTIVE',
+      role: 'GLOBAL_ADMIN'
+    }).onConflictDoNothing({ target: users.email }).returning({ id: users.id, email: users.email });
+
+    if (created) console.log(`Bootstrap administrator ready: ${created.email}`);
+  }
 
   private async tokenFor(user: AuthInput) {
     const secret = new TextEncoder().encode(process.env.JWT_SECRET ?? 'dev-only-secret');
