@@ -199,6 +199,8 @@ main { width: min(1400px, 90vw); margin: 0 auto; flex: 1; } h1, h2, h3, p { marg
 .duplicate-row span, .duplicate-row small { color: var(--sage); }
 .duplicate-row small { white-space: nowrap; }
 .mpota-marker-icon { border: 0; background: transparent; filter: drop-shadow(0 3px 4px rgba(8,46,73,.3)); } .retired-marker-icon { filter: drop-shadow(0 3px 4px rgba(8,46,73,.25)); }
+.mpota-cluster { display: grid; place-items: center; border: 4px solid rgba(255,253,249,.92); border-radius: 50%; color: var(--cream); background: var(--green); box-shadow: 0 4px 12px rgba(8,46,73,.3); font-weight: 950; }
+.mpota-cluster span { display: grid; place-items: center; width: calc(100% - 8px); height: calc(100% - 8px); border: 2px solid rgba(255,253,249,.62); border-radius: 50%; }
 .map-locate-control { display: grid; place-items: center; width: 34px; height: 34px; border: 2px solid rgba(11,63,98,.35); border-radius: 4px; color: var(--navy); background: var(--paper); box-shadow: 0 1px 5px rgba(8,46,73,.25); font-size: 24px; line-height: 1; }
 .map-locate-control:hover { color: var(--green); background: var(--cream); }
 .map-locate-control.is-loading { color: var(--orange); animation: locate-pulse 1s ease-in-out infinite; }

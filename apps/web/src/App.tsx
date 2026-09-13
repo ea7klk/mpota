@@ -1,5 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import L from 'leaflet';
+import 'leaflet.markercluster';
+import 'leaflet.markercluster/dist/MarkerCluster.css';
 
 type Locale = 'en' | 'es' | 'fr' | 'de';
 type Role = 'MEMBER' | 'ENTITY_ADMIN' | 'AWARD_ADMIN' | 'GLOBAL_ADMIN' | 'SYSTEM_BOOTSTRAP_ADMIN';
@@ -68,7 +70,7 @@ function SiteTopbar({ nav, activeTab, locale, user, onLocaleChange, onNavigate, 
 function MapView({ parks, picking, selectedPoint, view, onPick, onViewChange, onParkSelect, onVisibleParksChange }: { parks: Park[]; picking: boolean; selectedPoint?: Coordinates; view: MapViewState; onPick: (lat: number, lon: number) => void; onViewChange: (view: MapViewState) => void; onParkSelect: (park: Park) => void; onVisibleParksChange: (parks: Park[]) => void }) {
   const element = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
-  const parksLayer = useRef<L.LayerGroup | null>(null);
+  const parksLayer = useRef<L.MarkerClusterGroup | null>(null);
   const selectionLayer = useRef<L.LayerGroup | null>(null);
   const pickingRef = useRef(picking);
   const onPickRef = useRef(onPick);
@@ -88,7 +90,22 @@ function MapView({ parks, picking, selectedPoint, view, onPick, onViewChange, on
     const initialView = initialViewRef.current;
     map.current = L.map(element.current).setView([initialView.latitude, initialView.longitude], initialView.zoom);
     L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: 19 }).addTo(map.current);
-    parksLayer.current = L.layerGroup().addTo(map.current);
+    parksLayer.current = L.markerClusterGroup({
+      showCoverageOnHover: false,
+      zoomToBoundsOnClick: true,
+      spiderfyOnMaxZoom: true,
+      removeOutsideVisibleBounds: true,
+      maxClusterRadius: 55,
+      iconCreateFunction: (cluster) => {
+        const count = cluster.getChildCount();
+        const size = count < 10 ? 42 : count < 100 ? 48 : 56;
+        return L.divIcon({
+          html: `<span>${count}</span>`,
+          className: 'mpota-cluster',
+          iconSize: [size, size]
+        });
+      }
+    }).addTo(map.current);
     selectionLayer.current = L.layerGroup().addTo(map.current);
     const locateControl = new L.Control({ position: 'topleft' });
     locateControl.onAdd = () => {
@@ -198,8 +215,21 @@ function ParkEditorPage({ parkId, token, onClose, onSaved }: { parkId: string; t
     } catch (error) { setMessage((error as Error).message); }
     finally { setSaving(false); }
   };
+  const changeStatus = async () => {
+    if (!park) return;
+    const retiring = park.status !== 'RETIRED';
+    const reason = retiring ? window.prompt('Reason for retiring ' + park.reference + ':', 'Retired by park administrator') : null;
+    if (retiring && reason === null) return;
+    setSaving(true);
+    try {
+      const updated = await request<Park>('/admin/parks/' + park.id + (retiring ? '/retire' : '/activate'), { method: 'POST', body: retiring ? JSON.stringify({ notes: reason }) : undefined }, token);
+      setPark(updated);
+      setMessage(retiring ? park.reference + ' retired. Historical QSOs remain valid.' : park.reference + ' activated. New QSOs are enabled.');
+    } catch (error) { setMessage((error as Error).message); }
+    finally { setSaving(false); }
+  };
   if (!park || !view) return <div className="editor-window"><div className="editor-loading">{message || 'Loading park…'}</div></div>;
-  return <div className="editor-window"><header className="editor-header"><div><p className="eyebrow">Park administration</p><h1>Edit {park.reference}</h1></div><button className="button ghost" onClick={onClose}>Discard</button></header>{message && <div className="notice">{message}</div>}<main className="editor-layout"><section className="panel editor-map-panel"><div className="panel-heading"><div><p className="eyebrow">Location</p><h2>Move the park marker</h2><p className="map-hint">Click the map to change the coordinates. Save or discard when finished.</p></div><span className="badge">{Number(park.latitude).toFixed(5)}, {Number(park.longitude).toFixed(5)}</span></div><MapView parks={[park]} picking selectedPoint={{ latitude: Number(park.latitude), longitude: Number(park.longitude) }} view={view} onViewChange={setView} onParkSelect={() => undefined} onVisibleParksChange={() => undefined} onPick={(latitude, longitude) => setPark((current) => current ? { ...current, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6) } : current)} /></section><form className="panel editor-form" onSubmit={save}><div className="coordinate-grid"><label>Latitude<input value={Number(park.latitude).toFixed(6)} readOnly /></label><label>Longitude<input value={Number(park.longitude).toFixed(6)} readOnly /></label></div><label>Reference<input value={park.reference} readOnly /></label><label>Country code<input value={park.countryIso2} readOnly /></label><label>Continent code<input value={park.continentCode} readOnly /></label><label>Region<input value={park.region || ''} onChange={(event) => updateField('region', event.target.value)} /></label><label>Municipality / locality<input value={park.locality || ''} onChange={(event) => updateField('locality', event.target.value)} /></label><label>Park name<input value={park.name} required minLength={2} onChange={(event) => updateField('name', event.target.value)} /></label><label>Type<select value={park.parkType} onChange={(event) => updateField('parkType', event.target.value)}><option value="MUNICIPAL_PARK">Municipal park</option><option value="URBAN_FOREST">Urban forest</option><option value="BOTANICAL_GARDEN">Botanical garden</option></select></label><label>Description<textarea rows={4} value={park.description || ''} onChange={(event) => updateField('description', event.target.value)} /></label><label>Source URL <span className="optional">(optional)</span><input type="url" value={park.sourceUrl || ''} onChange={(event) => updateField('sourceUrl', event.target.value)} /></label><label>Access notes<textarea rows={3} value={park.accessNotes || ''} onChange={(event) => updateField('accessNotes', event.target.value)} /></label><label>Photo URL <span className="optional">(optional)</span><input type="url" value={park.photoUrl || ''} onChange={(event) => updateField('photoUrl', event.target.value)} /></label><div className="row-actions editor-actions"><button type="button" className="button ghost" onClick={onClose}>Discard changes</button><button type="submit" className="button" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div></form></main></div>;
+  return <div className="editor-window"><header className="editor-header"><div><p className="eyebrow">Park administration</p><h1>Edit {park.reference}</h1></div><button className="button ghost" onClick={onClose}>Discard</button></header>{message && <div className="notice">{message}</div>}<main className="editor-layout"><section className="panel editor-map-panel"><div className="panel-heading"><div><p className="eyebrow">Location</p><h2>Move the park marker</h2><p className="map-hint">Click the map to change the coordinates. Save or discard when finished.</p></div><span className="badge">{Number(park.latitude).toFixed(5)}, {Number(park.longitude).toFixed(5)}</span></div><MapView parks={[park]} picking selectedPoint={{ latitude: Number(park.latitude), longitude: Number(park.longitude) }} view={view} onViewChange={setView} onParkSelect={() => undefined} onVisibleParksChange={() => undefined} onPick={(latitude, longitude) => setPark((current) => current ? { ...current, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6) } : current)} /></section><form className="panel editor-form" onSubmit={save}><div className="coordinate-grid"><label>Latitude<input value={Number(park.latitude).toFixed(6)} readOnly /></label><label>Longitude<input value={Number(park.longitude).toFixed(6)} readOnly /></label></div><label>Reference<input value={park.reference} readOnly /></label><label>Country code<input value={park.countryIso2} readOnly /></label><label>Continent code<input value={park.continentCode} readOnly /></label><label>Region<input value={park.region || ''} onChange={(event) => updateField('region', event.target.value)} /></label><label>Municipality / locality<input value={park.locality || ''} onChange={(event) => updateField('locality', event.target.value)} /></label><label>Park name<input value={park.name} required minLength={2} onChange={(event) => updateField('name', event.target.value)} /></label><label>Type<select value={park.parkType} onChange={(event) => updateField('parkType', event.target.value)}><option value="MUNICIPAL_PARK">Municipal park</option><option value="URBAN_FOREST">Urban forest</option><option value="BOTANICAL_GARDEN">Botanical garden</option></select></label><label>Description<textarea rows={4} value={park.description || ''} onChange={(event) => updateField('description', event.target.value)} /></label><label>Source URL <span className="optional">(optional)</span><input type="url" value={park.sourceUrl || ''} onChange={(event) => updateField('sourceUrl', event.target.value)} /></label><label>Access notes<textarea rows={3} value={park.accessNotes || ''} onChange={(event) => updateField('accessNotes', event.target.value)} /></label><label>Photo URL <span className="optional">(optional)</span><input type="url" value={park.photoUrl || ''} onChange={(event) => updateField('photoUrl', event.target.value)} /></label><div className="row-actions editor-actions">{park.status === 'RETIRED' ? <button type="button" className="button" onClick={changeStatus} disabled={saving}>Reactivate park</button> : <button type="button" className="button danger" onClick={changeStatus} disabled={saving}>Retire park</button>}<button type="button" className="button ghost" onClick={onClose}>Discard changes</button><button type="submit" className="button" disabled={saving}>{saving ? 'Saving…' : 'Save changes'}</button></div></form></main></div>;
 }
 
 function ParkAdminPanel({ token, onEdit, onMessage }: { token: string; onEdit: (park: Park) => void; onMessage: (message: string) => void }) {
@@ -219,15 +249,7 @@ function ParkAdminPanel({ token, onEdit, onMessage }: { token: string; onEdit: (
     return () => { active = false; window.removeEventListener('focus', load); };
   }, [token, page, appliedSearch, onMessage]);
   const submitSearch = (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); setPage(1); setAppliedSearch({ ...search }); };
-  const retirePark = async (park: Park) => {
-    const reason = window.prompt('Reason for retiring ' + park.reference + ':', 'Retired by park administrator');
-    if (reason === null) return;
-    try { await request('/admin/parks/' + park.id + '/retire', { method: 'POST', body: JSON.stringify({ notes: reason }) }, token); onMessage(park.reference + ' retired.'); window.dispatchEvent(new Event('focus')); } catch (error) { onMessage((error as Error).message); }
-  };
-  const activatePark = async (park: Park) => {
-    try { await request('/admin/parks/' + park.id + '/activate', { method: 'POST' }, token); onMessage(park.reference + ' activated.'); window.dispatchEvent(new Event('focus')); } catch (error) { onMessage((error as Error).message); }
-  };
-  return <section className="admin-sections"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">Scoped entity management</p><h2>Park administration</h2><p className="muted">Only parks that you are allowed to edit are listed. Retirement preserves all historical QSOs.</p></div><span className="badge">{result.total} parks</span></div><form className="park-search" onSubmit={submitSearch}><label>Continent<input value={search.continentCode} placeholder="EU" onChange={(event) => setSearch((current) => ({ ...current, continentCode: event.target.value }))} /></label><label>Country<input value={search.countryIso2} placeholder="ES" onChange={(event) => setSearch((current) => ({ ...current, countryIso2: event.target.value }))} /></label><label>Region<input value={search.region} placeholder="Andalucía" onChange={(event) => setSearch((current) => ({ ...current, region: event.target.value }))} /></label><label>Municipality / locality<input value={search.locality} placeholder="Madrid" onChange={(event) => setSearch((current) => ({ ...current, locality: event.target.value }))} /></label><button className="button" type="submit">Search</button></form><div className="park-admin-list">{result.items.length ? result.items.map((park) => <article className="park-admin-row" key={park.id}><button className="park-admin-select" onClick={() => onEdit(park)}><span className="reference">{park.reference}</span><strong>{park.name}</strong><span>{park.locality || 'Locality not specified'} · {park.region || 'Region not specified'}</span><small>{park.countryIso2} · {park.continentCode} · {park.status}</small></button><div className="row-actions"><button className="button" onClick={() => onEdit(park)}>Edit</button>{park.status === 'RETIRED' ? <button className="button" onClick={() => activatePark(park)}>Activate</button> : <button className="button danger" onClick={() => retirePark(park)}>Retire</button>}</div></article>) : <p className="muted">No parks found in your approval scope.</p>}</div><div className="pagination"><button className="button ghost" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {result.totalPages ? page : 0} of {result.totalPages || 0} · {result.total} parks</span><button className="button ghost" disabled={!result.totalPages || page >= result.totalPages} onClick={() => setPage((current) => current + 1)}>Next</button></div></div></section>;
+  return <section className="admin-sections"><div className="panel"><div className="panel-heading"><div><p className="eyebrow">Scoped entity management</p><h2>Park administration</h2><p className="muted">Only parks that you are allowed to edit are listed. Select a park to edit it or change its active status.</p></div><span className="badge">{result.total} parks</span></div><form className="park-search" onSubmit={submitSearch}><label>Continent<input value={search.continentCode} placeholder="EU" onChange={(event) => setSearch((current) => ({ ...current, continentCode: event.target.value }))} /></label><label>Country<input value={search.countryIso2} placeholder="ES" onChange={(event) => setSearch((current) => ({ ...current, countryIso2: event.target.value }))} /></label><label>Region<input value={search.region} placeholder="Andalucía" onChange={(event) => setSearch((current) => ({ ...current, region: event.target.value }))} /></label><label>Municipality / locality<input value={search.locality} placeholder="Madrid" onChange={(event) => setSearch((current) => ({ ...current, locality: event.target.value }))} /></label><button className="button" type="submit">Search</button></form><div className="park-admin-list">{result.items.length ? result.items.map((park) => <article className="park-admin-row" key={park.id}><button className="park-admin-select" onClick={() => onEdit(park)}><span className="reference">{park.reference}</span><strong>{park.name}</strong><span>{park.locality || 'Locality not specified'} · {park.region || 'Region not specified'}</span><small>{park.countryIso2} · {park.continentCode} · {park.status}</small></button><div className="row-actions"><button className="button" onClick={() => onEdit(park)}>Edit</button></div></article>) : <p className="muted">No parks found in your approval scope.</p>}</div><div className="pagination"><button className="button ghost" disabled={page <= 1} onClick={() => setPage((current) => current - 1)}>Previous</button><span>Page {result.totalPages ? page : 0} of {result.totalPages || 0} · {result.total} parks</span><button className="button ghost" disabled={!result.totalPages || page >= result.totalPages} onClick={() => setPage((current) => current + 1)}>Next</button></div></div></section>;
 }
 
 function ParkDetailsModal({ park, token, onClose, onMessage }: { park: Park; token: string; onClose: () => void; onMessage: (message: string) => void }) {
