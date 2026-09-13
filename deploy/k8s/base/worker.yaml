@@ -1,0 +1,21 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mpota-award-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mpota-award-worker }
+  template:
+    metadata:
+      labels: { app: mpota-award-worker }
+    spec:
+      containers:
+        - name: worker
+          image: ghcr.io/ea7klk/mpota-award-worker:dev
+          envFrom:
+            - configMapRef: { name: mpota-config }
+            - secretRef: { name: mpota-secrets }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }

@@ -1,0 +1,53 @@
+@startuml MPOTA_Award_Lifecycle
+title MPOTA - award lifecycle and evaluation
+
+skinparam shadowing false
+skinparam backgroundColor #FAFBFC
+skinparam activity {
+  BackgroundColor #FFFFFF
+  BorderColor #CBD5E1
+  ArrowColor #475569
+  DiamondBackgroundColor #FEF3C7
+  DiamondBorderColor #D97706
+  StartColor #16A34A
+  EndColor #DC2626
+}
+
+start
+:Award Admin creates DRAFT award;
+:Add English, Spanish, French and German content;
+:Define award type, scope and validity period;
+:Define typed, versioned eligibility rules;
+:Preview results against current statistics;
+:Submit for publication;
+
+if (Global Admin approves?) then (yes)
+  :Create immutable AwardVersion;
+  :Set award to PUBLISHED;
+  :Expose award in public catalog;
+else (no)
+  :Return changes requested;
+  :Keep award as DRAFT;
+  stop
+endif
+
+:Accepted ADIF processing emits LogAccepted;
+:Award evaluator loads the published version;
+:Evaluate user statistics, entities, dates, bands and modes;
+if (Qualification reached?) then (yes)
+  :Create or update AwardProgress as EARNED;
+  :Create AwardGrant with evidence snapshot;
+  :Notify user;
+else (no)
+  :Update AwardProgress as IN_PROGRESS;
+endif
+
+if (Global Admin retires award?) then (yes)
+  :Set award to RETIRED;
+  :Hide from new public qualification;
+  :Preserve grants and historical versions;
+else (no)
+  :Continue evaluation for future accepted contacts;
+endif
+stop
+@enduml

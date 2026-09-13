@@ -1,0 +1,74 @@
+@startuml MPOTA_RBAC
+title MPOTA - roles, scopes, and administrative permissions
+
+left to right direction
+skinparam shadowing false
+skinparam backgroundColor #FAFBFC
+skinparam packageStyle rectangle
+skinparam actorStyle awesome
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #64748B
+  ArrowColor #334155
+}
+
+actor "Member" as member
+actor "Regional Entity Admin" as entity_admin
+actor "Award Admin" as award_admin
+actor "Global Admin" as global_admin
+
+rectangle "MPOTA authorization policy" {
+  usecase "Register and sign in" as uc_register
+  usecase "Propose entity" as uc_propose
+  usecase "Upload ADIF" as uc_upload
+  usecase "View approved map" as uc_map
+  usecase "Review scoped proposals" as uc_review
+  usecase "Approve scoped entity" as uc_approve_scoped
+  usecase "Create and edit award drafts" as uc_award_draft
+  usecase "Publish and retire awards" as uc_award_publish
+  usecase "Approve or remove any entity" as uc_global_entity
+  usecase "Manage roles and scopes" as uc_roles
+  usecase "Deactivate or delete users" as uc_users
+  usecase "View audit history" as uc_audit
+}
+
+member --> uc_register
+member --> uc_propose
+member --> uc_upload
+member --> uc_map
+
+entity_admin --> uc_review
+entity_admin --> uc_approve_scoped
+entity_admin --> uc_map
+
+award_admin --> uc_award_draft
+award_admin --> uc_map
+
+global_admin --> uc_award_publish
+global_admin --> uc_global_entity
+global_admin --> uc_roles
+global_admin --> uc_users
+global_admin --> uc_audit
+global_admin --> uc_map
+
+uc_approve_scoped ..> uc_review : <<include>>
+uc_award_publish ..> uc_award_draft : <<include>>
+
+note right of uc_review
+  Entity Admin permissions are filtered by
+  selected country scopes, selected continent
+  scopes, or the explicit ALL-countries scope.
+end note
+
+note right of uc_global_entity
+  Global Admin bypasses regional scope and can
+  approve, archive, remove, or restore any entity.
+  Removal is normally a reversible status change.
+end note
+
+note bottom of uc_users
+  Deactivation is preferred for users referenced by
+  logs or audit events. Hard deletion is restricted,
+  audited, and may require anonymization instead.
+end note
+@enduml

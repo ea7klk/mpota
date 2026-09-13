@@ -1,0 +1,10 @@
+services:
+  postgres: { platform: linux/amd64 }
+  redis: { platform: linux/amd64 }
+  nats: { platform: linux/amd64 }
+  minio: { platform: linux/amd64 }
+  keycloak: { platform: linux/amd64 }
+  tileserver: { platform: linux/amd64 }
+  api: { platform: linux/amd64 }
+  award-worker: { platform: linux/amd64 }
+  web: { platform: linux/amd64 }

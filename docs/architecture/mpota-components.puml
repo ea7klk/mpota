@@ -32,6 +32,8 @@ skinparam note {
 actor "Visitor" as visitor
 actor "Registered user" as member
 actor "Approver" as approver
+actor "Award Admin" as award_admin
+actor "Global Admin" as global_admin
 actor "Administrator" as admin
 
 package "Client boundary" {
@@ -58,7 +60,9 @@ package "MPOTA backend" {
   component "Reference allocator\nMP + ISO2 + 5 digits" as allocator
   component "ADIF upload service" as upload
   component "ADIF processing worker" as adif_worker
-  component "Statistics & awards service" as stats
+  component "Statistics service" as stats
+  component "Award service" as awards
+  component "Award evaluator worker" as award_worker
   component "Notification service" as notifications
   component "Geocoding adapter" as geocoder
   component "Audit/event service" as audit
@@ -88,6 +92,8 @@ package "Delivery boundary" {
 visitor --> web : browse/search
 member --> web : register, propose,\nupload ADIF, view stats
 approver --> web : review and approve
+award_admin --> web : create and edit awards
+global_admin --> web : global entity, award,\nand user administration
 admin --> web : manage users/scopes
 
 web --> ingress : HTTPS
@@ -98,6 +104,7 @@ gateway --> parks : /parks, /map
 gateway --> moderation : /proposals, /approvals
 gateway --> upload : /uploads
 gateway --> stats : /stats, /awards
+gateway --> awards : /awards, /award-progress
 
 leaflet --> tile_server : XYZ tiles
 leaflet --> parks : approved GeoJSON
@@ -125,6 +132,12 @@ adif_worker --> object_store : read ADIF
 adif_worker --> postgres : logs, contacts, errors
 adif_worker --> parks : validate approved reference
 adif_worker --> stats : update aggregates
+adif_worker --> broker : emit LogAccepted
+award_worker --> broker : consume LogAccepted
+award_worker --> stats : read qualifying statistics
+award_worker --> awards : evaluate rules and grant awards
+awards --> postgres : award definitions and grants
+awards --> audit : award events
 stats --> redis : cached aggregates
 notifications --> broker : consume events
 notifications --> postgres : delivery status
@@ -161,5 +174,24 @@ end note
 note bottom of gateway
 Publish an OpenAPI document at a versioned endpoint
 and use it to generate or validate the front-end client.
+end note
+
+note right of awards
+Award Admins create versioned drafts.
+Global Admins publish, retire, or override awards.
+Published versions are immutable for historical evaluation.
+end note
+
+note bottom of compose
+Apple Silicon development uses native linux/arm64 images.
+Production releases are built and tested for linux/amd64.
+Use an amd64 parity profile only when validating production
+behavior locally under emulation.
+end note
+
+note bottom of kube
+Production Kubernetes schedules the application and tile
+workloads on linux/amd64 nodes. OCI multi-architecture images
+are published so local ARM64 development remains supported.
 end note
 @enduml

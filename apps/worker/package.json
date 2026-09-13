@@ -1,0 +1,8 @@
+{
+  "name": "@mpota/award-worker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": { "build": "tsc", "start": "node dist/main.js" },
+  "dependencies": { "nats": "^2.29.3", "pg": "^8.16.3" },
+  "devDependencies": { "@types/node": "^24.3.0", "@types/pg": "^8.15.5", "typescript": "^5.9.2" }
+}

@@ -130,6 +130,34 @@ partition "Administration" {
   :Scope changes affect future queue access;
 }
 
+partition "Award administration" {
+  :Award Admin creates an award draft;
+  :Add localized name, description and icon;
+  :Define versioned eligibility rules,\nscope and validity period;
+  :Preview qualification results;
+  :Submit award for publication;
+  if (Global Admin publishes?) then (yes)
+    :Set award version to PUBLISHED;
+    :Make published version immutable;
+    :Expose award in public catalog;
+  else (no)
+    :Keep award as DRAFT or request changes;
+  endif
+}
+
+partition "Global administration" {
+  :Global Admin opens global console;
+  :Approve or override any entity proposal;
+  :Archive, remove or restore an entity;
+  :Publish, retire or correct awards;
+  :Deactivate or anonymize/delete a user;
+  :Record reason and immutable audit event;
+}
+
+:Accepted contacts emit LogAccepted events;
+:Award evaluator recalculates progress;
+:Newly qualified awards are granted and announced;
+
 :All public read endpoints enforce\npark.status = APPROVED;
 stop
 @enduml

@@ -1,0 +1,97 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.5
+    environment:
+      POSTGRES_DB: mpota
+      POSTGRES_USER: mpota
+      POSTGRES_PASSWORD: mpota
+    ports: ["5432:5432"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/db/001_init.sql:/docker-entrypoint-initdb.d/001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mpota -d mpota"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  nats:
+    image: nats:2.10-alpine
+    command: ["-js"]
+    ports: ["4222:4222", "8222:8222"]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: minio123
+    ports: ["9000:9000", "9001:9001"]
+    volumes:
+      - minio-data:/data
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.3
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+    ports: ["8081:8080"]
+
+  tileserver:
+    image: maptiler/tileserver-gl:latest
+    ports: ["8080:8080"]
+    volumes:
+      - ./infra/tiles:/data:ro
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DATABASE_URL: postgres://mpota:mpota@postgres:5432/mpota
+      JWT_SECRET: dev-only-change-me
+      AUTH_MODE: local
+      BOOTSTRAP_ADMIN_EMAIL: admin@mpota.local
+      NATS_URL: nats://nats:4222
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minio
+      S3_SECRET_KEY: minio123
+      S3_BUCKET: mpota
+    ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_started }
+      minio: { condition: service_started }
+
+  award-worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    environment:
+      DATABASE_URL: postgres://mpota:mpota@postgres:5432/mpota
+      NATS_URL: nats://nats:4222
+    depends_on:
+      postgres: { condition: service_healthy }
+      nats: { condition: service_started }
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        VITE_API_URL: http://localhost:3000/api/v1
+        VITE_TILE_URL: http://localhost:8080/styles/basic/{z}/{x}/{y}.png
+    ports: ["5173:80"]
+    depends_on: [api, tileserver]
+
+volumes:
+  postgres-data:
+  minio-data:

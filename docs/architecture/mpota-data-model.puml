@@ -30,6 +30,8 @@ package "Identity and authorization" {
     +locale: Locale
     +status: UserStatus
     +email_verified_at: datetime?
+    +deactivated_at: datetime?
+    +deleted_at: datetime?
     +created_at: datetime
   }
 
@@ -223,6 +225,86 @@ package "Logging and outcomes" {
   Park "1" -- "0..*" UserParkStat
 }
 
+package "Awards" {
+  class Award as award {
+    +id: UUID <<PK>>
+    +key: string <<unique>>
+    +status: AwardStatus
+    +award_type: AwardType
+    +created_by: UUID <<FK>>
+    +published_by: UUID <<FK>>
+    +created_at: datetime
+    +published_at: datetime?
+    +retired_at: datetime?
+  }
+
+  class AwardTranslation as award_translation {
+    +award_id: UUID <<PK,FK>>
+    +locale: Locale <<PK>>
+    +name: string
+    +description: text?
+  }
+
+  class AwardVersion as award_version {
+    +id: UUID <<PK>>
+    +award_id: UUID <<FK>>
+    +version_number: integer
+    +valid_from: datetime?
+    +valid_until: datetime?
+    +created_at: datetime
+  }
+
+  class AwardRule as award_rule {
+    +id: UUID <<PK>>
+    +award_version_id: UUID <<FK>>
+    +rule_type: string
+    +rule_definition: json
+  }
+
+  class AwardScopeCountry as award_scope_country {
+    +award_id: UUID <<PK,FK>>
+    +country_iso2: string <<PK,FK>>
+  }
+
+  class AwardScopeContinent as award_scope_continent {
+    +award_id: UUID <<PK,FK>>
+    +continent_code: string <<PK,FK>>
+  }
+
+  class AwardProgress as award_progress {
+    +user_id: UUID <<PK,FK>>
+    +award_id: UUID <<PK,FK>>
+    +current_value: decimal
+    +required_value: decimal
+    +status: AwardProgressStatus
+    +updated_at: datetime
+  }
+
+  class AwardGrant as award_grant {
+    +id: UUID <<PK>>
+    +user_id: UUID <<FK>>
+    +award_id: UUID <<FK>>
+    +award_version_id: UUID <<FK>>
+    +evidence_snapshot: json
+    +granted_at: datetime
+  }
+
+  award "1" -- "0..*" award_translation
+  award "1" -- "0..*" award_version
+  award_version "1" -- "0..*" award_rule
+  award "1" -- "0..*" award_scope_country
+  award "1" -- "0..*" award_scope_continent
+  country "1" -- "0..*" award_scope_country
+  continent "1" -- "0..*" award_scope_continent
+  User "1" -- "0..*" award : created_by
+  User "0..*" -- "0..1" award : published_by
+  User "1" -- "0..*" award_progress
+  award "1" -- "0..*" award_progress
+  User "1" -- "0..*" award_grant
+  award "1" -- "0..*" award_grant
+  award_version "1" -- "0..*" award_grant
+}
+
 package "Operational audit" {
   class AuditEvent {
     +id: UUID <<PK>>
@@ -254,9 +336,10 @@ enum UserStatus {
 
 enum RoleCode {
   MEMBER
-  APPROVER
-  ADMIN
-  SUPER_ADMIN
+  ENTITY_ADMIN
+  AWARD_ADMIN
+  GLOBAL_ADMIN
+  SYSTEM_BOOTSTRAP_ADMIN
 }
 
 enum ScopeType {
@@ -277,6 +360,7 @@ enum ParkStatus {
   PENDING
   APPROVED
   REJECTED
+  REMOVED
   ARCHIVED
 }
 
@@ -317,6 +401,24 @@ enum ParticipationRole {
   HUNTER
 }
 
+enum AwardStatus {
+  DRAFT
+  PENDING_PUBLICATION
+  PUBLISHED
+  RETIRED
+}
+
+enum AwardType {
+  ACTIVATOR
+  HUNTER
+  COMBINED
+}
+
+enum AwardProgressStatus {
+  IN_PROGRESS
+  EARNED
+}
+
 note "Reference invariant" as reference_rule
   Park.reference is generated only inside the approval transaction:
   `MP` + uppercase Country.iso2 + `-` + LPAD(country sequence, 5, '0')
@@ -342,14 +444,23 @@ note "Approval scope invariant" as scope_rule
   global option.
 end note
 
+note "Award governance invariant" as award_rule
+  Award Admins may create and edit draft awards and their localized
+  content. Global Admins publish, retire, or override awards. A published
+  AwardVersion and its rules are immutable; new criteria require a new
+  version. Award evaluation uses the version valid for the qualifying data.
+end note
+
 note "PostGIS invariant" as geo_rule
-  Store a generated geography(Point, 4326) from latitude/longitude for
+  Store a generated geometry(Point, 4326) from latitude/longitude for
   spatial indexes, duplicate-distance checks, bounding-box map queries,
-  and future boundary validation.
+  and future boundary validation. Cast to geography for geodesic distance
+  calculations where needed.
 end note
 
 Park .. reference_rule
 Park .. visibility_rule
 ApprovalScope .. scope_rule
+award .. award_rule
 Park .. geo_rule
 @enduml
