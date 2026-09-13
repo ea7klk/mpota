@@ -2,6 +2,10 @@
 
 MPOTA (Municipal Parks on the Air) is a planned amateur-radio program for activating and working municipal parks.
 
+## Mission and charter
+
+POTA does not currently allow municipally managed parks to be included in its program. MPOTA aims to bring these parks into an amateur-radio program and award, recognizing places that are normally accessible to radio amateurs all over the world. By making municipal parks part of the on-air experience, MPOTA seeks to bring the amateur-radio community closer to the people in our communities and to create more opportunities for the public to discover amateur radio.
+
 ## Planned user functions
 
 - Browse approved municipal parks on an interactive map.
