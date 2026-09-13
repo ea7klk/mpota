@@ -54,6 +54,7 @@ services:
     environment:
       MPOTA_TILESET_URL: ${MPOTA_TILESET_URL:-}
       MPOTA_TILESET_FILE: ${MPOTA_TILESET_FILE:-mpota.mbtiles}
+      MPOTA_TILESET_SOURCE_FILE: ${MPOTA_TILESET_SOURCE_FILE:-europe-latest.osm.pbf}
       MPOTA_TILESET_SHA256: ${MPOTA_TILESET_SHA256:-}
       MPOTA_TILESET_REQUIRED: ${MPOTA_TILESET_REQUIRED:-false}
       MPOTA_TILESET_FORCE_REFRESH: ${MPOTA_TILESET_FORCE_REFRESH:-false}
@@ -63,7 +64,21 @@ services:
       - apk add --no-cache ca-certificates curl && exec /bootstrap/bootstrap.sh
     volumes:
       - mpota-tile-data:/data
-      - ./infra/tiles/bootstrap.sh:/bootstrap/bootstrap.sh:ro
+      - ./infra/tiles/bootstrap-pbf.sh:/bootstrap/bootstrap.sh:ro
+
+  tile-build:
+    image: ghcr.io/systemed/tilemaker:master
+    environment:
+      MPOTA_TILESET_URL: ${MPOTA_TILESET_URL:-}
+      MPOTA_TILESET_FILE: ${MPOTA_TILESET_FILE:-europe.mbtiles}
+      MPOTA_TILESET_SOURCE_FILE: ${MPOTA_TILESET_SOURCE_FILE:-europe-latest.osm.pbf}
+      MPOTA_TILESET_FORCE_REFRESH: ${MPOTA_TILESET_FORCE_REFRESH:-false}
+    entrypoint: ["/bin/sh", "/bootstrap/build-mbtiles.sh"]
+    volumes:
+      - mpota-tile-data:/data
+      - ./infra/tiles/build-mbtiles.sh:/bootstrap/build-mbtiles.sh:ro
+    depends_on:
+      tile-bootstrap: { condition: service_completed_successfully }
 
   tileserver:
     # TileServer GL is also run as amd64 on Apple Silicon when ARM resolution
@@ -74,7 +89,7 @@ services:
     volumes:
       - mpota-tile-data:/data:ro
     depends_on:
-      tile-bootstrap: { condition: service_completed_successfully }
+      tile-build: { condition: service_completed_successfully }
 
   api:
     build:

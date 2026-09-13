@@ -76,7 +76,8 @@ package "Data boundary" {
 }
 
 package "Map boundary" {
-  component "Tile bootstrap/update job\nconfigured MBTiles artifact" as tile_bootstrap
+  component "Tile bootstrap/update job\nconfigured PBF or MBTiles artifact" as tile_bootstrap
+  component "PBF to MBTiles converter\ntilemaker" as tile_builder
   component "Tile server\nOSM-compatible, self-hosted" as tile_server
   database "Tile database / cache" as tile_db
   component "OSM data import pipeline\nregional extracts + updates" as osm_import
@@ -145,7 +146,8 @@ notifications --> postgres : delivery status
 
 osm_source --> osm_import : extract/update data
 osm_import --> tile_db : import tiles
-tile_bootstrap --> tile_db : download if absent\noptional checksum / force refresh
+tile_bootstrap --> tile_builder : download PBF if absent\n5% progress logs
+tile_builder --> tile_db : convert to MBTiles if needed\natomic output
 tile_server --> tile_db : render/cache tiles
 
 git --> argocd : desired state
@@ -159,6 +161,7 @@ compose ..> gateway : local test stack
 compose ..> postgres : local test stack
 compose ..> tile_server : local test stack
 compose ..> tile_bootstrap : named-volume bootstrap
+compose ..> tile_builder : local PBF conversion
 
 tile_bootstrap ..> compose : Docker one-shot service
 tile_bootstrap ..> kube : Kubernetes init container
@@ -178,10 +181,16 @@ the MPOTA application data.
 end note
 
 note right of tile_bootstrap
-The source URL is deployment configuration because
-current regional extracts are selected outside Git.
+The source URL and format are deployment configuration
+because regional extracts are selected outside Git.
 Downloads are written to a temporary file and moved
-atomically after optional SHA-256 verification.
+atomically after optional checksum verification.
+end note
+
+note right of tile_builder
+Docker development converts the Geofabrik Europe PBF
+to OpenMapTiles-compatible MBTiles with tilemaker.
+Production Kubernetes consumes a prebuilt MBTiles artifact.
 end note
 
 note bottom of gateway

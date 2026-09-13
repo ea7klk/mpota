@@ -17,8 +17,9 @@ skinparam note {
 
 start
 :Start Docker Compose or Kubernetes tile workload;
-:Read configured MBTiles URL, file name,
-checksum, required flag, and refresh flag;
+:Read configured source URL, source file,
+MBTiles file, checksum, required flag,
+and refresh flag;
 
 if (Tile file exists and
 force refresh is false?) then (yes)
@@ -27,11 +28,24 @@ force refresh is false?) then (yes)
   stop
 else (no)
   if (Tile source URL configured?) then (yes)
-    :Download to a temporary .part file
+    :Download source to a temporary .part file
 with retries and 5% progress logs;
-    if (Optional SHA-256 valid?) then (yes)
-      :Atomically move .part file
+    if (Source checksum valid when configured?) then (yes)
+      if (Source is OSM PBF?) then (yes)
+        :Convert PBF to OpenMapTiles-compatible
+MBTiles with tilemaker and 5% progress logs;
+      endif
+    else (no)
+      :Delete incomplete or invalid temporary file;
+      :Fail the tile workload;
+      stop
+    endif
+      if (Converted tile output valid?) then (yes)
+        :Atomically move .part file
 into the named volume or PVC;
+        if (Development source was PBF?) then (yes)
+          :Delete source PBF after successful extraction;
+        endif
       :Write source/checksum/timestamp manifest;
       :Start TileServer GL read-only;
       stop

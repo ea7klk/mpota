@@ -5,6 +5,7 @@ services:
   minio: { platform: linux/amd64 }
   keycloak: { platform: linux/amd64 }
   tileserver: { platform: linux/amd64 }
+  tile-build: { platform: linux/amd64 }
   api: { platform: linux/amd64 }
   award-worker: { platform: linux/amd64 }
   web: { platform: linux/amd64 }
