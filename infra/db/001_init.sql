@@ -2,7 +2,7 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE EXTENSION IF NOT EXISTS postgis;
 
 DO $$ BEGIN CREATE TYPE user_status AS ENUM ('PENDING_VERIFICATION','ACTIVE','SUSPENDED','DEACTIVATED','DELETED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
-DO $$ BEGIN CREATE TYPE user_role AS ENUM ('MEMBER','ENTITY_ADMIN','AWARD_ADMIN','GLOBAL_ADMIN','SYSTEM_BOOTSTRAP_ADMIN'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN CREATE TYPE user_role AS ENUM ('MEMBER','ENTITY_ADMIN','AWARD_ADMIN','GLOBAL_ADMIN','SYSTEM_ADMIN','SYSTEM_BOOTSTRAP_ADMIN'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE park_status AS ENUM ('PENDING','APPROVED','RETIRED','REJECTED','REMOVED','ARCHIVED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE proposal_status AS ENUM ('PENDING','CHANGES_REQUESTED','APPROVED','REJECTED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN CREATE TYPE award_status AS ENUM ('DRAFT','PENDING_PUBLICATION','PUBLISHED','RETIRED'); EXCEPTION WHEN duplicate_object THEN NULL; END $$;
@@ -20,6 +20,17 @@ CREATE TABLE IF NOT EXISTS approval_scopes (
   country_codes text[] NOT NULL DEFAULT '{}', continent_codes text[] NOT NULL DEFAULT '{}',
   all_countries boolean NOT NULL DEFAULT false, created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE TABLE IF NOT EXISTS system_settings (
+  setting_key varchar(120) PRIMARY KEY, value_json jsonb NOT NULL DEFAULT '{}'::jsonb,
+  updated_by uuid REFERENCES users(id), updated_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO system_settings (setting_key, value_json)
+VALUES ('park_types', '[
+  {"code":"MUNICIPAL_PARK","labels":{"en":"Municipal park","es":"Parque municipal","fr":"Parc municipal","de":"Kommunaler Park"},"active":true,"sortOrder":10},
+  {"code":"URBAN_FOREST","labels":{"en":"Urban forest","es":"Bosque urbano","fr":"Forêt urbaine","de":"Stadtwald"},"active":true,"sortOrder":20},
+  {"code":"BOTANICAL_GARDEN","labels":{"en":"Botanical garden","es":"Jardín botánico","fr":"Jardin botanique","de":"Botanischer Garten"},"active":true,"sortOrder":30}
+]'::jsonb)
+ON CONFLICT (setting_key) DO NOTHING;
 CREATE TABLE IF NOT EXISTS country_sequences (country_iso2 varchar(2) PRIMARY KEY, next_value integer NOT NULL DEFAULT 1);
 CREATE TABLE IF NOT EXISTS parks (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(), reference varchar(10) NOT NULL UNIQUE,

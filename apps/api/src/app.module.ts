@@ -7,6 +7,7 @@ import { ParksModule } from './parks/parks.module';
 import { AwardsModule } from './awards/awards.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { UsersModule } from './users/users.module';
+import { SystemSettingsModule } from './system-settings/system-settings.module';
 
-@Module({ imports: [DbModule, EventsModule, AuthModule, ParksModule, AwardsModule, UploadsModule, UsersModule], controllers: [AppController] })
+@Module({ imports: [DbModule, EventsModule, SystemSettingsModule, AuthModule, ParksModule, AwardsModule, UploadsModule, UsersModule], controllers: [AppController] })
 export class AppModule {}

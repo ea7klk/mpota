@@ -2,7 +2,7 @@ import { relations } from 'drizzle-orm';
 import { boolean, date, geometry, integer, jsonb, numeric, pgEnum, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const userStatus = pgEnum('user_status', ['PENDING_VERIFICATION', 'ACTIVE', 'SUSPENDED', 'DEACTIVATED', 'DELETED']);
-export const userRole = pgEnum('user_role', ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN']);
+export const userRole = pgEnum('user_role', ['MEMBER', 'ENTITY_ADMIN', 'AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN']);
 export const parkStatus = pgEnum('park_status', ['PENDING', 'APPROVED', 'RETIRED', 'REJECTED', 'REMOVED', 'ARCHIVED']);
 export const proposalStatus = pgEnum('proposal_status', ['PENDING', 'CHANGES_REQUESTED', 'APPROVED', 'REJECTED']);
 export const awardStatus = pgEnum('award_status', ['DRAFT', 'PENDING_PUBLICATION', 'PUBLISHED', 'RETIRED']);
@@ -21,6 +21,13 @@ export const users = pgTable('users', {
   deactivatedAt: timestamp('deactivated_at'),
   deletedAt: timestamp('deleted_at'),
   createdAt: timestamp('created_at').notNull().defaultNow()
+});
+
+export const systemSettings = pgTable('system_settings', {
+  settingKey: varchar('setting_key', { length: 120 }).primaryKey(),
+  valueJson: jsonb('value_json').notNull().default({}),
+  updatedBy: uuid('updated_by').references(() => users.id),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
 });
 
 export const approvalScopes = pgTable('approval_scopes', {

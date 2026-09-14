@@ -38,13 +38,13 @@ export class AwardsController {
   list() { return this.awards.list(); }
 
   @Post()
-  @Roles('AWARD_ADMIN')
+  @Roles('AWARD_ADMIN', 'GLOBAL_ADMIN', 'SYSTEM_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create an award draft' })
   create(@CurrentUser() user: AuthUser, @Body() dto: AwardDto) { return this.awards.create(user, dto); }
 
   @Post(':id/publish')
-  @Roles('GLOBAL_ADMIN')
+  @Roles('GLOBAL_ADMIN', 'SYSTEM_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Publish an award draft (global admin)' })
   publish(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.awards.publish(user, id); }

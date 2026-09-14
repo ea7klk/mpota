@@ -29,6 +29,8 @@ plantuml docs/architecture/mpota-tile-update.puml
 - An approver can be scoped to selected countries, selected continents, or all countries. Multiple countries and continents are first-class selections.
 - A country or continent scope is evaluated against the park's ISO country and continent; `ALL` is an explicit global scope.
 - Award Admins create and maintain award drafts; Global Admins publish, retire, and override awards.
+- Global Admins and System Admins use the common administration menu for QSO administration, awards, users, translations, and system settings. System Admins cannot approve, retire, activate, or edit parks.
+- Park types and translation catalogs are stored in the `system_settings` table as database-backed JSON and are exposed through the public and protected system-settings APIs. The versioned frontend catalogs remain the fallback.
 - Global Admins may approve/remove entities and deactivate/delete users. Destructive actions are audited and user deletion defaults to deactivation/anonymization when historical logs require retention.
 - Registered users may submit proposals from the map. Submissions remain pending until an authorized approver approves them.
 - Registered users may upload park images after approval. Image metadata is stored in PostgreSQL while binary files use the dedicated private `mpota-park-images` bucket with keys under `CONTINENT/COUNTRY/PARK-REFERENCE-serial.extension`; the API serves approved-park images for thumbnails and full-size viewing.

@@ -7,7 +7,9 @@ The running API publishes interactive Swagger UI at `/docs` and the OpenAPI JSON
 
 The API is versioned under `/api/v1` and uses bearer authentication for registered-user and administrator operations. The public map endpoint is `GET /api/v1/parks` and returns approved and retired parks; retired parks remain visible for historical context and are marked as inactive. `GET /api/v1/parks/{reference}/detail` returns the complete public park profile, activity summary, activations, park leaders, and image metadata.
 
-The main domains are authentication, parks and lifecycle administration, park image uploads, proposals/moderation, awards, QSO/ADIF processing, user profiles, and global user administration. Entity admins can use `POST /api/v1/admin/parks/{id}/retire` and `POST /api/v1/admin/parks/{id}/activate` within their approval scope; parks are never deleted. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
+The main domains are authentication, parks and lifecycle administration, park image uploads, proposals/moderation, awards, QSO/ADIF processing, user profiles, global user administration, and database-backed system settings. Entity admins can use `POST /api/v1/admin/parks/{id}/retire` and `POST /api/v1/admin/parks/{id}/activate` within their approval scope; parks are never deleted. Role and scope requirements are represented in the OpenAPI security metadata and enforced by the backend.
+
+`GET /api/v1/settings/public` returns active park types and translation overrides. `GET/PATCH /api/v1/admin/settings` is available to `GLOBAL_ADMIN`, `SYSTEM_ADMIN`, and the bootstrap administrator. Park types are validated by the API when proposals are created, parks are edited, or proposals are approved. `SYSTEM_ADMIN` can manage system settings, awards, users, and QSO administration, but cannot approve, retire, activate, or edit parks.
 
 ## Hunter attribution and profiles
 

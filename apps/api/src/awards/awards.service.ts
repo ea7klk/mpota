@@ -34,7 +34,7 @@ export class AwardsService {
   }
 
   async publish(user: AuthUser, id: string) {
-    if (!['GLOBAL_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN'].includes(user.role)) throw new ForbiddenException('Global admin role required');
+    if (!['GLOBAL_ADMIN', 'SYSTEM_ADMIN', 'SYSTEM_BOOTSTRAP_ADMIN'].includes(user.role)) throw new ForbiddenException('Global or system admin role required');
     const [award] = await this.db.db.update(awards).set({ status: 'PUBLISHED', publishedBy: user.id, publishedAt: new Date() }).where(and(eq(awards.id, id), eq(awards.status, 'DRAFT'))).returning();
     if (!award) throw new NotFoundException('Draft award not found');
     await this.db.db.insert(auditEvents).values({ actorId: user.id, action: 'AWARD_PUBLISHED', entityType: 'award', entityId: id });

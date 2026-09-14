@@ -66,12 +66,20 @@ package "Identity and authorization" {
     +continent_code: string <<PK,FK>>
   }
 
+  class SystemSetting {
+    +setting_key: string <<PK>>
+    +value_json: json
+    +updated_by: UUID <<FK>>
+    +updated_at: datetime
+  }
+
   User "1" -- "0..*" UserRole
   Role "1" -- "0..*" UserRole
   UserRole "1" -- "0..*" ApprovalScope
   ApprovalScope "1" -- "0..*" ApprovalScopeCountry
   ApprovalScope "1" -- "0..*" ApprovalScopeContinent
   User "0..*" -- "0..1" UserRole : granted_by
+  User "0..*" -- "0..1" SystemSetting : updated_by
 }
 
 package "Reference catalog" {
@@ -353,6 +361,7 @@ enum RoleCode {
   ENTITY_ADMIN
   AWARD_ADMIN
   GLOBAL_ADMIN
+  SYSTEM_ADMIN
   SYSTEM_BOOTSTRAP_ADMIN
 }
 
@@ -366,13 +375,13 @@ enum ParkType {
   MUNICIPAL_PARK
   URBAN_FOREST
   BOTANICAL_GARDEN
-  RECREATION_AREA
-  OTHER
+  CONFIGURED_TYPES
 }
 
 enum ParkStatus {
   PENDING
   APPROVED
+  RETIRED
   REJECTED
   REMOVED
   ARCHIVED
@@ -440,6 +449,13 @@ note right of Park
   Example: MPCS-00001
   The sequence is monotonic within a country and must be protected by
   a database unique constraint and transactional allocation.
+end note
+
+note right of SystemSetting
+  Database-backed configuration includes the active park-type list,
+  localized labels, sort order, and translation catalog overrides.
+  The web client falls back to its versioned locale catalogs when a
+  database override is absent.
 end note
 
 note left of Park

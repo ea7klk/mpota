@@ -8,7 +8,7 @@ import { AuthUser } from '../auth/auth.types';
 import { AwardsService } from '../awards/awards.service';
 
 export type AccessUpdate = {
-  role: 'MEMBER' | 'ENTITY_ADMIN' | 'AWARD_ADMIN' | 'GLOBAL_ADMIN' | 'SYSTEM_BOOTSTRAP_ADMIN';
+  role: 'MEMBER' | 'ENTITY_ADMIN' | 'AWARD_ADMIN' | 'GLOBAL_ADMIN' | 'SYSTEM_ADMIN' | 'SYSTEM_BOOTSTRAP_ADMIN';
   countryCodes?: string[];
   continentCodes?: string[];
   allCountries?: boolean;

@@ -134,13 +134,13 @@ export class UploadsController {
   rejectedQsos(@CurrentUser() user: AuthUser, @Param('id') id: string) { return this.uploads.rejectedQsos(user, id); }
 
   @Get('admin/qsos/activations')
-  @Roles('GLOBAL_ADMIN')
+  @Roles('GLOBAL_ADMIN', 'SYSTEM_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'List activation groups for global QSO administration' })
   adminActivations(@Query() query: AdminActivationQueryDto) { return this.uploads.adminActivationList(query); }
 
   @Delete('admin/qsos/activations')
-  @Roles('GLOBAL_ADMIN')
+  @Roles('GLOBAL_ADMIN', 'SYSTEM_ADMIN')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete all stored QSOs for one activator, entity, and UTC date' })
   deleteActivation(@CurrentUser() user: AuthUser, @Query() query: DeleteActivationDto) { return this.uploads.deleteActivation(query, user); }

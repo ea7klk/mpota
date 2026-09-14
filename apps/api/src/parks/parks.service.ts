@@ -4,6 +4,7 @@ import { DbService } from '../db/db.service';
 import { approvalScopes, auditEvents, countrySequences, moderationDecisions, parkImages, parkProposals, parks } from '../db/schema';
 import { AuthUser } from '../auth/auth.types';
 import { StorageService } from '../uploads/storage.service';
+import { SystemSettingsService } from '../system-settings/system-settings.service';
 
 export type ProposalInput = {
   countryIso2: string;
@@ -55,7 +56,7 @@ const PARK_IMAGE_TYPES: Record<string, string> = { 'image/jpeg': 'jpg', 'image/p
 
 @Injectable()
 export class ParksService {
-  constructor(private readonly db: DbService, private readonly storage: StorageService) {}
+  constructor(private readonly db: DbService, private readonly storage: StorageService, private readonly settings: SystemSettingsService) {}
 
   async listImages(reference: string) {
     const park = await this.findPublic(reference);
@@ -257,9 +258,10 @@ export class ParksService {
     const latitude = input.latitude ?? Number(existing.latitude);
     const longitude = input.longitude ?? Number(existing.longitude);
     if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) throw new BadRequestException('Coordinates are out of range');
+    const parkType = input.parkType === undefined ? undefined : await this.settings.assertParkType(input.parkType);
     const [updated] = await this.db.db.update(parks).set({
       region: input.region === undefined ? undefined : input.region || null, locality: input.locality === undefined ? undefined : input.locality || null, latitude: latitude.toFixed(6), longitude: longitude.toFixed(6),
-      geom: { x: longitude, y: latitude }, parkType: input.parkType, name: input.name?.trim(), description: input.description === undefined ? undefined : input.description || null,
+      geom: { x: longitude, y: latitude }, parkType, name: input.name?.trim(), description: input.description === undefined ? undefined : input.description || null,
       sourceUrl: input.sourceUrl === undefined ? undefined : input.sourceUrl || null, accessNotes: input.accessNotes === undefined ? undefined : input.accessNotes || null, photoUrl: input.photoUrl === undefined ? undefined : input.photoUrl || null, updatedAt: new Date()
     }).where(eq(parks.id, id)).returning();
     await this.db.db.insert(auditEvents).values({ actorId: user.id, action: 'ENTITY_UPDATED', entityType: 'park', entityId: id, beforeJson: { reference: existing.reference, latitude: existing.latitude, longitude: existing.longitude, name: existing.name }, afterJson: { reference: updated.reference, latitude: updated.latitude, longitude: updated.longitude, name: updated.name } });
@@ -278,10 +280,11 @@ export class ParksService {
     if (input.latitude < -90 || input.latitude > 90 || input.longitude < -180 || input.longitude > 180) {
       throw new BadRequestException('Coordinates are out of range');
     }
+    const parkType = await this.settings.assertParkType(input.parkType);
     const [proposal] = await this.db.db.insert(parkProposals).values({
       submittedBy: user.id, countryIso2, continentCode: input.continentCode.trim().toUpperCase(),
       region: input.region, locality: input.locality, latitude: input.latitude.toFixed(6), longitude: input.longitude.toFixed(6),
-      parkType: input.parkType ?? 'MUNICIPAL_PARK', name: input.name.trim(), description: input.description,
+      parkType, name: input.name.trim(), description: input.description,
       sourceUrl: input.sourceUrl, accessNotes: input.accessNotes, photoUrl: input.photoUrl
     }).returning();
     return proposal;
@@ -364,6 +367,7 @@ export class ParksService {
       const [proposal] = await tx.select().from(parkProposals).where(eq(parkProposals.id, proposalId));
       if (!proposal || proposal.status !== 'PENDING') throw new NotFoundException('Pending proposal not found');
       await this.assertScope(user, proposal.countryIso2, proposal.continentCode, tx);
+      await this.settings.assertParkType(proposal.parkType);
       await tx.execute(sql`
         INSERT INTO country_sequences (country_iso2, next_value)
         VALUES (
