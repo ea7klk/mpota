@@ -30,7 +30,7 @@ export class UsersService {
         GROUP BY c.park_id, COALESCE(c.qso_date_utc, c.qso_datetime::date, u.uploaded_at::date)
       )
       SELECT p.reference, p.name, activation_date::text AS date, qso_count AS qsos,
-        CASE WHEN qso_count >= 10 THEN 'VALID' ELSE 'FAILED' END AS status
+        CASE WHEN qso_count >= 5 THEN 'VALID' ELSE 'FAILED' END AS status
       FROM activation_groups INNER JOIN parks p ON p.id = activation_groups.park_id
       ORDER BY activation_date DESC
     `);

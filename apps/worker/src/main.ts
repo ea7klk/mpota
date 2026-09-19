@@ -23,10 +23,10 @@ async function evaluate(db: Pool, event: ProcessedEvent) {
     for (const award of published) {
       const required = Number((award.rule_definition as { minimumEntities?: number }).minimumEntities ?? 1);
       const qualifyingParks = award.type === 'ACTIVATOR'
-        ? `SELECT c.park_id FROM contacts c WHERE c.user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL AND c.qso_date_utc IS NOT NULL GROUP BY c.user_id, c.park_id, c.qso_date_utc HAVING COUNT(*) >= 10`
+        ? `SELECT c.park_id FROM contacts c WHERE c.user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL AND c.qso_date_utc IS NOT NULL GROUP BY c.user_id, c.park_id, c.qso_date_utc HAVING COUNT(*) >= 5`
         : award.type === 'HUNTER'
           ? `SELECT DISTINCT c.park_id FROM contacts c WHERE c.hunter_user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL`
-          : `SELECT c.park_id FROM contacts c WHERE c.user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL AND c.qso_date_utc IS NOT NULL GROUP BY c.user_id, c.park_id, c.qso_date_utc HAVING COUNT(*) >= 10 UNION SELECT DISTINCT c.park_id FROM contacts c WHERE c.hunter_user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL`;
+          : `SELECT c.park_id FROM contacts c WHERE c.user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL AND c.qso_date_utc IS NOT NULL GROUP BY c.user_id, c.park_id, c.qso_date_utc HAVING COUNT(*) >= 5 UNION SELECT DISTINCT c.park_id FROM contacts c WHERE c.hunter_user_id = $1 AND c.validity = 'VALID' AND c.park_id IS NOT NULL`;
       const { rows } = await db.query(`WITH qualifying_parks AS (${qualifyingParks})
         SELECT COUNT(DISTINCT qp.park_id)::int AS value
         FROM qualifying_parks qp INNER JOIN parks p ON p.id = qp.park_id

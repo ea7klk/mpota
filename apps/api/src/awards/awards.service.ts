@@ -68,7 +68,7 @@ export class AwardsService {
         activationCounts.set(key, (activationCounts.get(key) ?? 0) + 1);
       }
     }
-    const qualifyingActivations = new Set([...activationCounts.entries()].filter(([, count]) => count >= 10).map(([key]) => key));
+    const qualifyingActivations = new Set([...activationCounts.entries()].filter(([, count]) => count >= 5).map(([key]) => key));
     for (const award of published) {
       const rule = (award.ruleDefinition ?? {}) as { minimumEntities?: number };
       const requiredValue = Math.max(1, Number(rule.minimumEntities ?? 1));

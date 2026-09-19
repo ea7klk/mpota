@@ -116,7 +116,7 @@ export class UploadsService {
         COALESCE(NULLIF(activator.callsign, ''), activator.display_name) AS activator_callsign,
         COUNT(*) FILTER (WHERE c.validity = 'VALID')::int AS valid_qsos,
         COUNT(*)::int AS total_qsos,
-        CASE WHEN COUNT(*) FILTER (WHERE c.validity = 'VALID') >= 10 THEN 'VALID' ELSE 'FAILED' END AS status
+        CASE WHEN COUNT(*) FILTER (WHERE c.validity = 'VALID') >= 5 THEN 'VALID' ELSE 'FAILED' END AS status
       FROM contacts c
       INNER JOIN adif_uploads au ON au.id = c.upload_id
       INNER JOIN parks p ON p.id = c.park_id
