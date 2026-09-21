@@ -1,19 +1,21 @@
 # MPOTA
 
-MPOTA (Municipal Parks on the Air) is a planned amateur-radio program for activating and working municipal parks.
+MPOTA (Municipal Parks on the Air) is an amateur-radio programme for operating from publicly accessible local parks.
 
 ## Mission and charter
 
-POTA does not currently allow municipally managed parks to be included in its program. MPOTA aims to bring these parks into an amateur-radio program and award, recognizing places that are normally accessible to radio amateurs all over the world. By making municipal parks part of the on-air experience, MPOTA seeks to bring the amateur-radio community closer to the people in our communities and to create more opportunities for the public to discover amateur radio.
+MPOTA promotes amateur-radio operation from publicly accessible local parks, making portable radio accessible close to where people live while encouraging experimentation, community activity, and public awareness of amateur radio. By bringing portable operation into familiar local spaces, MPOTA seeks to bring the amateur-radio community closer to the people in our communities and to create welcoming opportunities for the public to discover the hobby.
 
-MPOTA is not intended to replace POTA (Parks-on-the-Air), WWFF (World Wide Flora & Fauna), BOTA (Beaches on the Air), or any other similar amateur-radio programme. It is intended to complement these initiatives, not compete with them. Therefore, parks that are already included in POTA, WWFF, BOTA, or another similar programme are **not eligible** for inclusion into MPOTA.
+MPOTA eligibility is defined independently of the reference lists of POTA (Parks-on-the-Air), WWFF (World Wide Flora & Fauna), BOTA (Beaches on the Air), and other similar programmes. A park may also be included in one or more of those programmes; overlap is permitted and is not, by itself, a reason for exclusion from MPOTA.
+
+An eligible MPOTA park must be a publicly accessible local park or comparable public green/open space suitable for portable amateur-radio operation. It must be owned, administered, designated, or managed for public use by a local public authority. This term is deliberately broad and includes a municipality, city, town, village, district, county, province, region, metropolitan authority, public parks agency, or equivalent public body under local law. Normal opening hours, access rules, permits, safety requirements, and official park instructions continue to apply.
 
 ## Planned user functions
 
-- Browse approved municipal parks on an interactive map.
+- Browse approved local public parks on an interactive map.
 - Search for parks by reference, name, country, or locality.
 - Register and maintain a user profile, including callsign and preferred language.
-- Propose a new municipal park by selecting its location on the map and completing the proposal form.
+- Propose a new eligible local public park by selecting its location on the map and completing the proposal form.
 - Track proposal status and respond to requests for changes.
 - Upload ADIF logs after an activation.
 - Review participation history and resulting statistics.
